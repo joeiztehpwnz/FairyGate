@@ -1,0 +1,217 @@
+using UnityEngine;
+using UnityEngine.Events;
+
+namespace FairyGate.Combat
+{
+    public class StaminaSystem : MonoBehaviour
+    {
+        [Header("Stamina Configuration")]
+        [SerializeField] private CharacterStats characterStats;
+        [SerializeField] private int currentStamina;
+        [SerializeField] private bool isResting = false;
+
+        [Header("Auto-Cancel Settings")]
+        [SerializeField] private float gracePeriod = CombatConstants.AUTO_CANCEL_GRACE_PERIOD;
+        private float graceTimer = 0f;
+        private bool isInGracePeriod = false;
+
+        [Header("Events")]
+        public UnityEvent<int, int> OnStaminaChanged = new UnityEvent<int, int>();
+        public UnityEvent OnRestStarted = new UnityEvent();
+        public UnityEvent OnRestStopped = new UnityEvent();
+        public UnityEvent OnStaminaDepleted = new UnityEvent();
+        public UnityEvent<SkillType> OnSkillAutoCancel = new UnityEvent<SkillType>();
+
+        private CombatController combatController;
+        private SkillSystem skillSystem;
+
+        public int CurrentStamina => currentStamina;
+        public int MaxStamina => characterStats?.MaxStamina ?? CombatConstants.BASE_STAMINA;
+        public bool IsResting => isResting;
+        public float StaminaPercentage => (float)currentStamina / MaxStamina;
+
+        private void Awake()
+        {
+            combatController = GetComponent<CombatController>();
+            skillSystem = GetComponent<SkillSystem>();
+
+            if (characterStats == null)
+            {
+                Debug.LogWarning($"StaminaSystem on {gameObject.name} has no CharacterStats assigned. Using default values.");
+                characterStats = CharacterStats.CreateDefaultStats();
+            }
+
+            currentStamina = MaxStamina;
+        }
+
+        private void Update()
+        {
+            if (isResting)
+            {
+                RegenerateStamina(CombatConstants.REST_STAMINA_REGENERATION_RATE * Time.deltaTime);
+            }
+
+            HandleGracePeriod();
+            CheckForAutoCancel();
+        }
+
+        public bool HasStaminaFor(int cost)
+        {
+            return currentStamina >= cost;
+        }
+
+        public bool ConsumeStamina(int amount)
+        {
+            if (currentStamina >= amount)
+            {
+                currentStamina -= amount;
+                currentStamina = Mathf.Max(0, currentStamina);
+                OnStaminaChanged.Invoke(currentStamina, MaxStamina);
+
+                if (currentStamina == 0)
+                {
+                    OnStaminaDepleted.Invoke();
+                }
+
+                return true;
+            }
+            return false;
+        }
+
+        public void RegenerateStamina(float amount)
+        {
+            int oldStamina = currentStamina;
+            currentStamina = Mathf.Min(MaxStamina, currentStamina + Mathf.RoundToInt(amount));
+
+            if (currentStamina != oldStamina)
+            {
+                OnStaminaChanged.Invoke(currentStamina, MaxStamina);
+            }
+        }
+
+        public void DrainStamina(float drainRate, float deltaTime)
+        {
+            if (drainRate <= 0) return;
+
+            float modifiedDrainRate = DamageCalculator.CalculateStaminaDrainRate(drainRate, characterStats);
+            float drainAmount = modifiedDrainRate * deltaTime;
+
+            int oldStamina = currentStamina;
+            currentStamina = Mathf.Max(0, currentStamina - Mathf.RoundToInt(drainAmount));
+
+            if (currentStamina != oldStamina)
+            {
+                OnStaminaChanged.Invoke(currentStamina, MaxStamina);
+
+                if (currentStamina == 0)
+                {
+                    OnStaminaDepleted.Invoke();
+                }
+            }
+        }
+
+        public void StartResting()
+        {
+            if (isResting) return;
+
+            isResting = true;
+            OnRestStarted.Invoke();
+
+            // Rest automatically exits combat state
+            if (combatController != null && combatController.IsInCombat)
+            {
+                combatController.ExitCombat();
+            }
+        }
+
+        public void StopResting()
+        {
+            if (!isResting) return;
+
+            isResting = false;
+            OnRestStopped.Invoke();
+        }
+
+        public void InterruptRest()
+        {
+            if (isResting)
+            {
+                StopResting();
+                Debug.Log($"{gameObject.name} rest interrupted by taking damage");
+            }
+        }
+
+        private void HandleGracePeriod()
+        {
+            if (isInGracePeriod)
+            {
+                graceTimer -= Time.deltaTime;
+                if (graceTimer <= 0f)
+                {
+                    isInGracePeriod = false;
+                }
+            }
+        }
+
+        private void CheckForAutoCancel()
+        {
+            if (skillSystem == null || isInGracePeriod) return;
+
+            // Check if we need to auto-cancel any waiting state skills
+            if (skillSystem.CurrentState == SkillExecutionState.Waiting)
+            {
+                SkillType currentSkill = skillSystem.CurrentSkill;
+                int requiredStamina = GetSkillStaminaCost(currentSkill);
+
+                if (currentStamina < requiredStamina)
+                {
+                    // Start grace period before auto-canceling
+                    if (!isInGracePeriod)
+                    {
+                        isInGracePeriod = true;
+                        graceTimer = gracePeriod;
+                    }
+                    else if (graceTimer <= 0f)
+                    {
+                        // Grace period expired, auto-cancel skill
+                        skillSystem.CancelSkill();
+                        OnSkillAutoCancel.Invoke(currentSkill);
+                        Debug.Log($"{gameObject.name} auto-cancelled {currentSkill} due to stamina depletion");
+                    }
+                }
+            }
+        }
+
+        private int GetSkillStaminaCost(SkillType skillType)
+        {
+            return skillType switch
+            {
+                SkillType.Attack => CombatConstants.ATTACK_STAMINA_COST,
+                SkillType.Defense => CombatConstants.DEFENSE_STAMINA_COST,
+                SkillType.Counter => CombatConstants.COUNTER_STAMINA_COST,
+                SkillType.Smash => CombatConstants.SMASH_STAMINA_COST,
+                SkillType.Windmill => CombatConstants.WINDMILL_STAMINA_COST,
+                _ => 0
+            };
+        }
+
+        public void SetStamina(int value)
+        {
+            currentStamina = Mathf.Clamp(value, 0, MaxStamina);
+            OnStaminaChanged.Invoke(currentStamina, MaxStamina);
+        }
+
+        public void RestoreToFull()
+        {
+            SetStamina(MaxStamina);
+        }
+
+        private void OnValidate()
+        {
+            if (characterStats != null)
+            {
+                currentStamina = Mathf.Clamp(currentStamina, 0, MaxStamina);
+            }
+        }
+    }
+}

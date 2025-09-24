@@ -1,0 +1,175 @@
+using UnityEngine;
+using UnityEngine.Events;
+
+namespace FairyGate.Combat
+{
+    public class KnockdownMeterTracker : MonoBehaviour
+    {
+        [Header("Knockdown Meter")]
+        [SerializeField] private float currentMeter = 0f;
+        [SerializeField] private float maxMeter = CombatConstants.KNOCKDOWN_METER_THRESHOLD;
+        [SerializeField] private float decayRate = CombatConstants.KNOCKDOWN_METER_DECAY_RATE;
+
+        [Header("Configuration")]
+        [SerializeField] private CharacterStats characterStats;
+        [SerializeField] private bool enableDebugLogs = true;
+
+        [Header("Events")]
+        public UnityEvent<float, float> OnMeterChanged = new UnityEvent<float, float>(); // current, max
+        public UnityEvent OnMeterKnockdownTriggered = new UnityEvent();
+
+        private StatusEffectManager statusEffectManager;
+
+        public float CurrentMeter => currentMeter;
+        public float MaxMeter => maxMeter;
+        public float MeterPercentage => currentMeter / maxMeter;
+        public bool IsAtThreshold => currentMeter >= maxMeter;
+
+        private void Awake()
+        {
+            statusEffectManager = GetComponent<StatusEffectManager>();
+
+            if (characterStats == null)
+            {
+                Debug.LogWarning($"KnockdownMeterTracker on {gameObject.name} has no CharacterStats assigned. Using default values.");
+                characterStats = CharacterStats.CreateDefaultStats();
+            }
+        }
+
+        private void Update()
+        {
+            // Continuous decay - never resets, only decays
+            if (currentMeter > 0f)
+            {
+                float oldMeter = currentMeter;
+                currentMeter = Mathf.Max(0f, currentMeter + (decayRate * Time.deltaTime));
+
+                if (!Mathf.Approximately(oldMeter, currentMeter))
+                {
+                    OnMeterChanged.Invoke(currentMeter, maxMeter);
+                }
+            }
+        }
+
+        public void AddMeterBuildup(int attackDamage, CharacterStats attackerStats)
+        {
+            // Calculate buildup: Base + (Attacker Strength / 10) - (Defender Focus / 30)
+            float buildup = CombatConstants.ATTACK_KNOCKDOWN_BUILDUP;
+            buildup += (attackerStats.strength / CombatConstants.STRENGTH_KNOCKDOWN_DIVISOR);
+            buildup -= (characterStats.focus / CombatConstants.FOCUS_STATUS_RECOVERY_DIVISOR);
+
+            // Ensure minimum buildup of 1
+            buildup = Mathf.Max(1f, buildup);
+
+            AddToMeter(buildup);
+
+            if (enableDebugLogs)
+            {
+                Debug.Log($"{gameObject.name} knockdown meter: +{buildup:F1} (total: {currentMeter:F1}/{maxMeter})");
+            }
+        }
+
+        public void AddToMeter(float amount)
+        {
+            if (amount <= 0) return;
+
+            float oldMeter = currentMeter;
+            currentMeter = Mathf.Min(maxMeter, currentMeter + amount);
+
+            OnMeterChanged.Invoke(currentMeter, maxMeter);
+
+            // Check for knockdown threshold
+            if (currentMeter >= maxMeter && oldMeter < maxMeter)
+            {
+                TriggerMeterKnockdown();
+            }
+        }
+
+        public void TriggerMeterKnockdown()
+        {
+            if (enableDebugLogs)
+            {
+                Debug.Log($"{gameObject.name} knockdown meter reached threshold! Triggering meter knockdown.");
+            }
+
+            // Apply meter-based knockdown
+            if (statusEffectManager != null)
+            {
+                float knockdownDuration = DamageCalculator.CalculateKnockdownDuration(characterStats);
+                var knockdownEffect = new StatusEffect(StatusEffectType.MeterKnockdown, knockdownDuration);
+                statusEffectManager.ApplyStatusEffect(knockdownEffect);
+            }
+
+            OnMeterKnockdownTriggered.Invoke();
+
+            // IMPORTANT: Meter continues normal decay, does NOT reset to 0
+            // This is explicitly stated in the specifications
+        }
+
+        public void SetMeter(float value)
+        {
+            float oldMeter = currentMeter;
+            currentMeter = Mathf.Clamp(value, 0f, maxMeter);
+
+            if (!Mathf.Approximately(oldMeter, currentMeter))
+            {
+                OnMeterChanged.Invoke(currentMeter, maxMeter);
+
+                // Check for threshold crossing
+                if (currentMeter >= maxMeter && oldMeter < maxMeter)
+                {
+                    TriggerMeterKnockdown();
+                }
+            }
+        }
+
+        public void ResetMeterForTesting()
+        {
+            // Only for testing/debugging purposes
+            // Normal gameplay should NEVER reset the meter
+            currentMeter = 0f;
+            OnMeterChanged.Invoke(currentMeter, maxMeter);
+
+            if (enableDebugLogs)
+            {
+                Debug.Log($"{gameObject.name} knockdown meter reset for testing purposes");
+            }
+        }
+
+        // For Smash and Windmill skills that bypass the meter system entirely
+        public void TriggerImmediateKnockdown()
+        {
+            if (enableDebugLogs)
+            {
+                Debug.Log($"{gameObject.name} received immediate knockdown (Smash/Windmill bypass)");
+            }
+
+            if (statusEffectManager != null)
+            {
+                float knockdownDuration = DamageCalculator.CalculateKnockdownDuration(characterStats);
+                var knockdownEffect = new StatusEffect(StatusEffectType.InteractionKnockdown, knockdownDuration);
+                statusEffectManager.ApplyStatusEffect(knockdownEffect);
+            }
+
+            // NOTE: Smash/Windmill do NOT affect the knockdown meter system at all
+        }
+
+        private void OnValidate()
+        {
+            currentMeter = Mathf.Clamp(currentMeter, 0f, maxMeter);
+        }
+
+        // Debug visualization
+        private void OnGUI()
+        {
+            if (enableDebugLogs && Application.isPlaying)
+            {
+                Vector3 screenPos = Camera.main.WorldToScreenPoint(transform.position + Vector3.up * 2.5f);
+                screenPos.y = Screen.height - screenPos.y; // Flip Y coordinate
+
+                GUI.Label(new Rect(screenPos.x - 50, screenPos.y, 100, 20),
+                    $"Meter: {currentMeter:F1}/{maxMeter:F0}");
+            }
+        }
+    }
+}
