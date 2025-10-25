@@ -87,6 +87,11 @@ namespace FairyGate.Combat
             // Check for defensive responses
             var validDefenses = GetValidDefensiveResponses(offensiveSkill);
 
+            if (enableDebugLogs && offensiveSkill.skillType == SkillType.RangedAttack)
+            {
+                Debug.Log($"[RangedAttack Debug] {offensiveSkill.combatant.name} RangedAttack found {validDefenses.Count} defensive responses");
+            }
+
             if (validDefenses.Count == 0)
             {
                 // No defensive response - execute normally
@@ -130,10 +135,26 @@ namespace FairyGate.Combat
         {
             var validResponses = new List<SkillExecution>();
 
+            if (enableDebugLogs && offensiveSkill.skillType == SkillType.RangedAttack)
+            {
+                Debug.Log($"[RangedAttack Debug] Checking {waitingDefensiveSkills.Count} waiting defensive skills");
+                foreach (var defensiveSkill in waitingDefensiveSkills.ToList())
+                {
+                    Debug.Log($"[RangedAttack Debug] Found waiting {defensiveSkill.skillType} from {defensiveSkill.combatant.name}");
+                }
+            }
+
             foreach (var defensiveSkill in waitingDefensiveSkills.ToList())
             {
                 // Check if defensive skill can respond to this offensive skill
-                if (CanDefensiveSkillRespond(defensiveSkill, offensiveSkill))
+                bool canRespond = CanDefensiveSkillRespond(defensiveSkill, offensiveSkill);
+
+                if (enableDebugLogs && offensiveSkill.skillType == SkillType.RangedAttack)
+                {
+                    Debug.Log($"[RangedAttack Debug] {defensiveSkill.combatant.name} {defensiveSkill.skillType} can respond: {canRespond}");
+                }
+
+                if (canRespond)
                 {
                     validResponses.Add(defensiveSkill);
                     waitingDefensiveSkills.Remove(defensiveSkill);
@@ -149,8 +170,12 @@ namespace FairyGate.Combat
             var defenderWeapon = defensiveSkill.combatant.GetComponent<WeaponController>();
             var attackerTransform = offensiveSkill.combatant.transform;
 
-            // Initial range check when entering waiting state
-            if (!defenderWeapon.IsInRange(attackerTransform))
+            // SPECIAL CASE: For ranged attacks, defender doesn't need weapon range to block/counter
+            // They're defending against a projectile, not attacking back
+            bool isRangedAttack = offensiveSkill.skillType == SkillType.RangedAttack;
+
+            // Initial range check when entering waiting state (skip for ranged attacks)
+            if (!isRangedAttack && !defenderWeapon.IsInRange(attackerTransform))
             {
                 return false;
             }
@@ -158,14 +183,29 @@ namespace FairyGate.Combat
             // Check if skills can interact
             if (!SpeedResolver.CanInteract(offensiveSkill.skillType, defensiveSkill.skillType))
             {
+                if (enableDebugLogs && offensiveSkill.skillType == SkillType.RangedAttack)
+                {
+                    Debug.Log($"[RangedAttack Debug] SpeedResolver.CanInteract returned FALSE for {offensiveSkill.skillType} vs {defensiveSkill.skillType}");
+                }
                 return false;
             }
 
-            // Secondary range check for incoming attack
+            // Secondary range check - attacker must be in range to hit the defender
             var attackerWeapon = offensiveSkill.combatant.GetComponent<WeaponController>();
             if (!attackerWeapon.IsInRange(defensiveSkill.combatant.transform))
             {
+                if (enableDebugLogs && offensiveSkill.skillType == SkillType.RangedAttack)
+                {
+                    float distance = Vector3.Distance(offensiveSkill.combatant.transform.position, defensiveSkill.combatant.transform.position);
+                    float attackerRange = attackerWeapon?.WeaponData?.range ?? 0f;
+                    Debug.Log($"[RangedAttack Debug] Attacker {offensiveSkill.combatant.name} OUT OF RANGE: distance={distance:F1}, attacker weapon range={attackerRange:F1}");
+                }
                 return false;
+            }
+
+            if (enableDebugLogs && offensiveSkill.skillType == SkillType.RangedAttack)
+            {
+                Debug.Log($"[RangedAttack Debug] All checks PASSED - {defensiveSkill.combatant.name} {defensiveSkill.skillType} can respond!");
             }
 
             return true;
@@ -194,15 +234,13 @@ namespace FairyGate.Combat
             }
 
             // Process damage and effects based on interaction
+            // Note: ProcessInteractionEffects will handle completing defensive skills conditionally
             ProcessInteractionEffects(interaction, offensiveSkill, defensiveSkill, attackerStats, defenderStats, attackerWeapon, defenderWeapon);
-
-            // Complete defensive skill execution
-            CompleteDefensiveSkillExecution(defensiveSkill);
         }
 
         private InteractionResult DetermineInteraction(SkillType offensive, SkillType defensive)
         {
-            // All 17 interactions from the matrix
+            // All interactions from the matrix
             switch (offensive)
             {
                 case SkillType.Attack:
@@ -225,7 +263,15 @@ namespace FairyGate.Combat
                     switch (defensive)
                     {
                         case SkillType.Defense: return InteractionResult.DefenderBlocks; // Windmill vs Defense → No status effects, defender blocks
-                        case SkillType.Counter: return InteractionResult.CounterReflection; // Windmill vs Counter → Counter reflection
+                        case SkillType.Counter: return InteractionResult.WindmillBreaksCounter; // Windmill vs Counter → Windmill breaks counter, knocks down defender
+                    }
+                    break;
+
+                case SkillType.RangedAttack:
+                    switch (defensive)
+                    {
+                        case SkillType.Defense: return InteractionResult.DefenderBlocks; // RangedAttack vs Defense → Defender blocks 100% damage
+                        case SkillType.Counter: return InteractionResult.CounterIneffective; // RangedAttack vs Counter → Counter is ineffective
                     }
                     break;
             }
@@ -258,22 +304,62 @@ namespace FairyGate.Combat
                     {
                         Debug.Log($"{attacker.combatant.name} attack blocked by {defender.combatant.name} defense");
                     }
+                    // Complete defensive skill
+                    CompleteDefensiveSkillExecution(defender);
                     break;
 
                 case InteractionResult.CounterReflection: // Any skill vs Counter
                     // Attacker knocked down, defender takes 0 damage, reflects calculated damage back
-                    attackerStatusEffects.ApplyInteractionKnockdown();
+                    Vector3 counterKnockbackDirection = (attacker.combatant.transform.position - defender.combatant.transform.position).normalized;
+                    Vector3 counterDisplacement = counterKnockbackDirection * CombatConstants.COUNTER_KNOCKBACK_DISTANCE;
+                    attackerStatusEffects.ApplyInteractionKnockdown(counterDisplacement);
                     int reflectedDamage = DamageCalculator.CalculateCounterReflection(attackerStats, attackerWeapon);
                     attackerHealth.TakeDamage(reflectedDamage, defender.combatant.transform);
                     if (enableDebugLogs)
                     {
                         Debug.Log($"{defender.combatant.name} counter reflected {reflectedDamage} damage to {attacker.combatant.name}");
                     }
+                    // Complete defensive skill
+                    CompleteDefensiveSkillExecution(defender);
+                    break;
+
+                case InteractionResult.CounterIneffective: // RangedAttack vs Counter
+                    // Counter is ineffective against ranged attacks
+                    // Check if ranged attack hit
+                    bool counterRangedAttackHit = attacker.skillSystem.LastRangedAttackHit;
+
+                    if (counterRangedAttackHit)
+                    {
+                        // HIT: Defender takes full damage, no reflection
+                        int rangedDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats);
+                        defenderHealth.TakeDamage(rangedDamage, attacker.combatant.transform);
+
+                        if (enableDebugLogs)
+                        {
+                            Debug.Log($"{defender.combatant.name} Counter ineffective against {attacker.combatant.name} RangedAttack - took {rangedDamage} damage");
+                        }
+
+                        // Complete Counter (failed to reflect)
+                        CompleteDefensiveSkillExecution(defender);
+                    }
+                    else
+                    {
+                        // MISS: Counter takes 0 damage but still completes (wasted counter)
+                        if (enableDebugLogs)
+                        {
+                            Debug.Log($"{attacker.combatant.name} RangedAttack missed - {defender.combatant.name} Counter wasted");
+                        }
+
+                        // Complete Counter even on miss (counter was used up)
+                        CompleteDefensiveSkillExecution(defender);
+                    }
                     break;
 
                 case InteractionResult.DefenderKnockedDown: // Smash vs Defense
                     // Defender knocked down, takes 75% reduced damage
-                    defenderStatusEffects.ApplyInteractionKnockdown();
+                    Vector3 smashKnockbackDirection = (defender.combatant.transform.position - attacker.combatant.transform.position).normalized;
+                    Vector3 smashDisplacement = smashKnockbackDirection * CombatConstants.SMASH_KNOCKBACK_DISTANCE;
+                    defenderStatusEffects.ApplyInteractionKnockdown(smashDisplacement);
                     int baseDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats);
                     int reducedDamage = DamageCalculator.ApplyDamageReduction(baseDamage, CombatConstants.SMASH_VS_DEFENSE_DAMAGE_REDUCTION, defenderStats);
                     defenderHealth.TakeDamage(reducedDamage, attacker.combatant.transform);
@@ -281,14 +367,63 @@ namespace FairyGate.Combat
                     {
                         Debug.Log($"{attacker.combatant.name} smash broke through {defender.combatant.name} defense for {reducedDamage} damage");
                     }
+                    // Complete defensive skill
+                    CompleteDefensiveSkillExecution(defender);
                     break;
 
-                case InteractionResult.DefenderBlocks: // Windmill vs Defense
-                    // No status effects, defender blocks (0 damage)
+                case InteractionResult.DefenderBlocks: // Windmill vs Defense OR RangedAttack vs Defense
+                    if (attacker.skillType == SkillType.RangedAttack)
+                    {
+                        // Check if the ranged attack hit or missed
+                        bool rangedAttackHit = attacker.skillSystem.LastRangedAttackHit;
+
+                        if (rangedAttackHit)
+                        {
+                            // HIT: Defense blocks 100% of ranged attack damage (complete block)
+                            if (enableDebugLogs)
+                            {
+                                Debug.Log($"{defender.combatant.name} completely blocked {attacker.combatant.name} RangedAttack (0 damage)");
+                            }
+
+                            // Complete Defense (successfully blocked a hit)
+                            CompleteDefensiveSkillExecution(defender);
+                        }
+                        else
+                        {
+                            // MISS: Defense takes 0 damage, stays active (waiting for next attack)
+                            if (enableDebugLogs)
+                            {
+                                Debug.Log($"{attacker.combatant.name} RangedAttack missed - {defender.combatant.name} Defense remains active");
+                            }
+
+                            // Do NOT complete Defense - it stays in Waiting state
+                        }
+                    }
+                    else
+                    {
+                        // Windmill vs Defense: Blocked cleanly (0 damage)
+                        if (enableDebugLogs)
+                        {
+                            Debug.Log($"{defender.combatant.name} blocked {attacker.combatant.name} windmill cleanly");
+                        }
+                        // Complete defensive skill
+                        CompleteDefensiveSkillExecution(defender);
+                    }
+                    break;
+
+                case InteractionResult.WindmillBreaksCounter: // Windmill vs Counter
+                    // Windmill breaks through counter, knocks down defender, deals normal damage
+                    Vector3 windmillKnockbackDirection = (defender.combatant.transform.position - attacker.combatant.transform.position).normalized;
+                    Vector3 windmillDisplacement = windmillKnockbackDirection * CombatConstants.WINDMILL_KNOCKBACK_DISTANCE;
+                    defenderStatusEffects.ApplyInteractionKnockdown(windmillDisplacement);
+                    int windmillDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats);
+                    defenderHealth.TakeDamage(windmillDamage, attacker.combatant.transform);
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{defender.combatant.name} blocked {attacker.combatant.name} windmill cleanly");
+                        Debug.Log($"{attacker.combatant.name} windmill broke through {defender.combatant.name} counter for {windmillDamage} damage and knockdown");
                     }
+                    // Complete defensive skill
+                    CompleteDefensiveSkillExecution(defender);
                     break;
             }
         }
@@ -311,6 +446,24 @@ namespace FairyGate.Combat
 
             if (attackerStats == null || targetStats == null || attackerWeapon == null) return;
 
+            // SPECIAL HANDLING FOR RANGED ATTACK: Check if it hit
+            if (execution.skillType == SkillType.RangedAttack)
+            {
+                bool rangedAttackHit = execution.skillSystem.LastRangedAttackHit;
+
+                if (!rangedAttackHit)
+                {
+                    // MISS: No damage, no effects
+                    if (enableDebugLogs)
+                    {
+                        Debug.Log($"{execution.combatant.name} RangedAttack missed {target.name}");
+                    }
+                    return; // Skip all damage and effects
+                }
+
+                // If we reach here, the ranged attack hit - continue with normal damage application
+            }
+
             // Calculate and apply damage
             int damage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, targetStats);
             targetHealth.TakeDamage(damage, execution.combatant.transform);
@@ -321,13 +474,17 @@ namespace FairyGate.Combat
                 case SkillType.Attack:
                     // Apply stun and knockdown meter buildup
                     targetStatusEffects.ApplyStun(attackerWeapon.stunDuration);
-                    targetKnockdownMeter.AddMeterBuildup(damage, attackerStats);
+                    targetKnockdownMeter.AddMeterBuildup(damage, attackerStats, execution.combatant.transform);
                     break;
 
                 case SkillType.Smash:
                 case SkillType.Windmill:
-                    // Immediate knockdown (bypasses meter system)
-                    targetKnockdownMeter.TriggerImmediateKnockdown();
+                    // Immediate knockdown with displacement (bypasses meter system)
+                    Vector3 directHitDirection = (target.transform.position - execution.combatant.transform.position).normalized;
+                    Vector3 directHitDisplacement = directHitDirection * (execution.skillType == SkillType.Smash
+                        ? CombatConstants.SMASH_KNOCKBACK_DISTANCE
+                        : CombatConstants.WINDMILL_KNOCKBACK_DISTANCE);
+                    targetKnockdownMeter.TriggerImmediateKnockdown(directHitDisplacement);
                     break;
             }
 

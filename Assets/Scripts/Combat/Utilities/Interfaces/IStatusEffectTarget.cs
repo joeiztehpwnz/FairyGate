@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.Events;
 
 namespace FairyGate.Combat
@@ -23,12 +24,28 @@ namespace FairyGate.Combat
         public float remainingTime;
         public bool isActive;
 
+        // Displacement fields for knockdown effects
+        public Vector3 displacementVector;
+        public bool hasDisplacement;
+
         public StatusEffect(StatusEffectType effectType, float effectDuration)
         {
             type = effectType;
             duration = effectDuration;
             remainingTime = effectDuration;
             isActive = true;
+            displacementVector = Vector3.zero;
+            hasDisplacement = false;
+        }
+
+        public StatusEffect(StatusEffectType effectType, float effectDuration, Vector3 displacement)
+        {
+            type = effectType;
+            duration = effectDuration;
+            remainingTime = effectDuration;
+            isActive = true;
+            displacementVector = displacement;
+            hasDisplacement = displacement != Vector3.zero;
         }
 
         public void UpdateEffect(float deltaTime)

@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bee3f0996d6673f5287ece5c4498d572, type: 3}
+  m_Name: Windrunner_SpeedSet
+  m_EditorClassIdentifier: 
+  setName: Windrunner
+  armor: {fileID: 11400000, guid: 6f464fcc726dc7fa7bf2173526b18fdd, type: 2}
+  weapon: {fileID: 0}
+  accessory: {fileID: 11400000, guid: 2c04a6186475c8d648beaa5417229cd4, type: 2}
+  description: High mobility build for hit-and-run tactics and kiting.

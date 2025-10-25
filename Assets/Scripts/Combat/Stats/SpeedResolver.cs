@@ -61,7 +61,7 @@ namespace FairyGate.Combat
 
         public static bool IsOffensiveSkill(SkillType skill)
         {
-            return skill == SkillType.Attack || skill == SkillType.Smash || skill == SkillType.Windmill;
+            return skill == SkillType.Attack || skill == SkillType.Smash || skill == SkillType.Windmill || skill == SkillType.RangedAttack;
         }
 
         public static bool IsDefensiveSkill(SkillType skill)

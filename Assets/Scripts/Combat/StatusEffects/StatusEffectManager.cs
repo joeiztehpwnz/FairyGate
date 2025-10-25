@@ -89,6 +89,12 @@ namespace FairyGate.Combat
 
             OnStatusEffectApplied.Invoke(effect);
             UpdateMovementRestrictions();
+
+            // Apply physical displacement if this effect has it
+            if (effect.hasDisplacement)
+            {
+                ApplyPhysicalDisplacement(effect.displacementVector);
+            }
         }
 
         public void RemoveStatusEffect(StatusEffectType type)
@@ -269,15 +275,52 @@ namespace FairyGate.Combat
             ApplyStatusEffect(new StatusEffect(StatusEffectType.InteractionKnockdown, duration));
         }
 
+        public void ApplyInteractionKnockdown(Vector3 displacement)
+        {
+            float duration = DamageCalculator.CalculateKnockdownDuration(characterStats);
+            ApplyStatusEffect(new StatusEffect(StatusEffectType.InteractionKnockdown, duration, displacement));
+        }
+
         public void ApplyMeterKnockdown()
         {
             float duration = DamageCalculator.CalculateKnockdownDuration(characterStats);
             ApplyStatusEffect(new StatusEffect(StatusEffectType.MeterKnockdown, duration));
         }
 
+        public void ApplyMeterKnockdown(Vector3 displacement)
+        {
+            float duration = DamageCalculator.CalculateKnockdownDuration(characterStats);
+            ApplyStatusEffect(new StatusEffect(StatusEffectType.MeterKnockdown, duration, displacement));
+        }
+
         public void ApplyRest()
         {
             ApplyStatusEffect(new StatusEffect(StatusEffectType.Rest, float.MaxValue)); // Indefinite until cancelled
+        }
+
+        private void ApplyPhysicalDisplacement(Vector3 displacementVector)
+        {
+            var characterController = GetComponent<CharacterController>();
+            if (characterController != null)
+            {
+                // Apply displacement using CharacterController.Move for proper collision
+                characterController.Move(displacementVector);
+
+                if (enableDebugLogs)
+                {
+                    Debug.Log($"{gameObject.name} displaced by {displacementVector}");
+                }
+            }
+            else
+            {
+                // Fallback to transform movement if no CharacterController
+                transform.position += displacementVector;
+
+                if (enableDebugLogs)
+                {
+                    Debug.Log($"{gameObject.name} displaced by {displacementVector} (transform fallback)");
+                }
+            }
         }
     }
 }

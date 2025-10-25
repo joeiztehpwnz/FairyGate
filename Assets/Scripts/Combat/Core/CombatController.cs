@@ -8,7 +8,7 @@ namespace FairyGate.Combat
     public class CombatController : MonoBehaviour, ICombatant
     {
         [Header("Combat Configuration")]
-        [SerializeField] private CharacterStats characterStats;
+        [SerializeField] private CharacterStats baseStats;
         [SerializeField] private CombatState currentCombatState = CombatState.Idle;
         [SerializeField] private Transform currentTarget;
         [SerializeField] private LayerMask enemyLayerMask = -1;
@@ -34,9 +34,11 @@ namespace FairyGate.Combat
         private WeaponController weaponController;
         private SkillSystem skillSystem;
         private MovementController movementController;
+        private EquipmentManager equipmentManager;
 
         // ICombatant Properties
-        public CharacterStats Stats => characterStats;
+        public CharacterStats BaseStats => baseStats;
+        public CharacterStats Stats => equipmentManager != null ? equipmentManager.ModifiedStats : baseStats;
         public Transform WeaponTransform => weaponController?.transform;
         public Transform Transform => transform;
         public bool IsInCombat => currentCombatState == CombatState.Combat || currentCombatState == CombatState.Charging || currentCombatState == CombatState.Executing;
@@ -64,11 +66,12 @@ namespace FairyGate.Combat
             weaponController = GetComponent<WeaponController>();
             skillSystem = GetComponent<SkillSystem>();
             movementController = GetComponent<MovementController>();
+            equipmentManager = GetComponent<EquipmentManager>();
 
-            if (characterStats == null)
+            if (baseStats == null)
             {
                 Debug.LogWarning($"CombatController on {gameObject.name} has no CharacterStats assigned. Using default values.");
-                characterStats = CharacterStats.CreateDefaultStats();
+                baseStats = CharacterStats.CreateDefaultStats();
             }
 
             // Validate required components
@@ -183,6 +186,9 @@ namespace FairyGate.Combat
 
             SetTarget(target);
 
+            // Force immediate combat state update instead of waiting for next Update()
+            UpdateCombatState();
+
             if (enableDebugLogs)
             {
                 Debug.Log($"{gameObject.name} entered combat with {target.name}");
@@ -209,6 +215,9 @@ namespace FairyGate.Combat
 
             currentTarget = null;
             OnTargetChanged.Invoke(null);
+
+            // Force immediate combat state update instead of waiting for next Update()
+            UpdateCombatState();
 
             if (enableDebugLogs)
             {

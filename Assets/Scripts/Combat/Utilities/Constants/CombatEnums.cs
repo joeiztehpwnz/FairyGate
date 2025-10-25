@@ -18,7 +18,8 @@ namespace FairyGate.Combat
         Defense,
         Counter,
         Smash,
-        Windmill
+        Windmill,
+        RangedAttack
     }
 
     public enum SkillExecutionState
@@ -26,6 +27,7 @@ namespace FairyGate.Combat
         Uncharged,      // Skill ready to be charged
         Charging,       // Skill charging (2 seconds base)
         Charged,        // Skill ready to execute
+        Aiming,         // RangedAttack aiming state
         Startup,        // Skill startup frames
         Active,         // Skill active frames (uncancellable)
         Recovery,       // Skill recovery frames
@@ -47,7 +49,12 @@ namespace FairyGate.Combat
         Sword,
         Spear,
         Dagger,
-        Mace
+        Mace,
+        Bow,
+        Javelin,
+        ThrowingKnife,
+        Sling,
+        ThrowingAxe
     }
 
     public enum SpeedResolution
@@ -75,6 +82,8 @@ namespace FairyGate.Combat
         AttackerBlocked,
         DefenderBlocks,
         CounterReflection,
+        CounterIneffective,     // Counter fails to reflect (e.g., against ranged attacks)
+        WindmillBreaksCounter,  // Windmill breaks through counter and knocks down defender
         SpeedResolution,
         NoInteraction,
         SimultaneousExecution

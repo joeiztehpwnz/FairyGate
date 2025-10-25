@@ -9,6 +9,7 @@ namespace FairyGate.Combat
         [SerializeField] private CharacterStats characterStats;
         [SerializeField] private float currentMovementSpeed;
         [SerializeField] private bool canMove = true;
+        [SerializeField] private bool isPlayerControlled = true;
 
         [Header("Input")]
         [SerializeField] private KeyCode forwardKey = KeyCode.W;
@@ -25,6 +26,7 @@ namespace FairyGate.Combat
         private Vector3 currentVelocity;
         private float baseMovementSpeed;
         private float skillMovementModifier = 1f;
+        private Vector3 aiMovementInput = Vector3.zero;
 
         public bool CanMove => canMove;
         public float CurrentSpeed => currentMovementSpeed;
@@ -61,15 +63,24 @@ namespace FairyGate.Combat
 
             Vector3 moveDirection = Vector3.zero;
 
-            // Get input
-            if (Input.GetKey(forwardKey))
-                moveDirection += Vector3.forward;
-            if (Input.GetKey(backwardKey))
-                moveDirection += Vector3.back;
-            if (Input.GetKey(leftKey))
-                moveDirection += Vector3.left;
-            if (Input.GetKey(rightKey))
-                moveDirection += Vector3.right;
+            // Get input based on control type
+            if (isPlayerControlled)
+            {
+                // Player keyboard input
+                if (Input.GetKey(forwardKey))
+                    moveDirection += Vector3.forward;
+                if (Input.GetKey(backwardKey))
+                    moveDirection += Vector3.back;
+                if (Input.GetKey(leftKey))
+                    moveDirection += Vector3.left;
+                if (Input.GetKey(rightKey))
+                    moveDirection += Vector3.right;
+            }
+            else
+            {
+                // AI programmatic input
+                moveDirection = aiMovementInput;
+            }
 
             // Normalize for 8-directional movement
             if (moveDirection.magnitude > 1f)
@@ -123,6 +134,19 @@ namespace FairyGate.Combat
             }
         }
 
+        public void SetMovementInput(Vector3 inputDirection)
+        {
+            if (!isPlayerControlled)
+            {
+                aiMovementInput = inputDirection;
+
+                if (enableDebugLogs && inputDirection != Vector3.zero)
+                {
+                    Debug.Log($"{gameObject.name} AI movement input: {inputDirection}");
+                }
+            }
+        }
+
         public void ApplySkillMovementRestriction(SkillType skillType, SkillExecutionState executionState)
         {
             float modifier = GetSkillMovementModifier(skillType, executionState);
@@ -163,8 +187,14 @@ namespace FairyGate.Combat
                 case SkillType.Windmill:
                     if (executionState == SkillExecutionState.Charging)
                         return CombatConstants.WINDMILL_MOVEMENT_SPEED_MODIFIER; // 30% reduction while charging
-                    else if (executionState == SkillExecutionState.Active)
-                        return 0f; // Immobilized during execution
+                    else if (executionState == SkillExecutionState.Charged || executionState == SkillExecutionState.Active)
+                        return 0f; // Immobilized when charged and during execution
+                    else
+                        return 1f;
+
+                case SkillType.RangedAttack:
+                    if (executionState == SkillExecutionState.Aiming)
+                        return CombatConstants.RANGED_ATTACK_AIMING_MOVEMENT_MODIFIER; // 50% speed while aiming
                     else
                         return 1f;
 

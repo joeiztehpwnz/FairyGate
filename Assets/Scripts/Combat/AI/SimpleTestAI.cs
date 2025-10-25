@@ -135,7 +135,12 @@ namespace FairyGate.Combat
 
         private void UpdateMovement(float distanceToPlayer)
         {
-            if (!movementController.CanMove) return;
+            if (!movementController.CanMove)
+            {
+                // Explicitly stop movement when can't move
+                movementController.SetMovementInput(Vector3.zero);
+                return;
+            }
 
             Vector3 directionToPlayer = (player.position - transform.position).normalized;
 
@@ -150,15 +155,16 @@ namespace FairyGate.Combat
                 // Move away from player
                 MoveInDirection(-directionToPlayer);
             }
-            // Otherwise stay roughly in position
+            else
+            {
+                // Stop movement when in optimal range
+                movementController.SetMovementInput(Vector3.zero);
+            }
         }
 
         private void MoveInDirection(Vector3 direction)
         {
-            // Simulate WASD input by setting the movement direction
-            // This is a simplified version - in a real implementation,
-            // you might want to use a more sophisticated pathfinding system
-
+            // Convert direction to discrete movement input for the MovementController
             Vector3 moveInput = Vector3.zero;
 
             if (direction.x > 0.1f) moveInput.x = 1f;
@@ -167,14 +173,8 @@ namespace FairyGate.Combat
             if (direction.z > 0.1f) moveInput.z = 1f;
             else if (direction.z < -0.1f) moveInput.z = -1f;
 
-            // Apply movement through the movement controller
-            if (moveInput != Vector3.zero)
-            {
-                // This would need to be integrated with the movement system
-                // For now, we'll just move the transform directly
-                Vector3 movement = moveInput.normalized * movementController.CurrentSpeed * Time.deltaTime;
-                transform.Translate(movement, Space.World);
-            }
+            // Use the MovementController input system instead of direct transform manipulation
+            movementController.SetMovementInput(moveInput);
         }
 
         private void TryUseSkill()
@@ -219,19 +219,33 @@ namespace FairyGate.Combat
                 }
             }
 
-            // Use the skill
-            skillSystem.StartCharging(selectedSkill);
+            // Use the skill - Attack executes immediately, others require charging
+            if (selectedSkill == SkillType.Attack)
+            {
+                // Attack executes immediately
+                skillSystem.ExecuteSkill(SkillType.Attack);
+
+                if (enableDebugLogs)
+                {
+                    Debug.Log($"{gameObject.name} AI executed {selectedSkill} immediately");
+                }
+            }
+            else
+            {
+                // Other skills require charging
+                skillSystem.StartCharging(selectedSkill);
+
+                if (enableDebugLogs)
+                {
+                    Debug.Log($"{gameObject.name} AI charging {selectedSkill}");
+                }
+
+                // Start coroutine to execute skill when charged
+                StartCoroutine(ExecuteSkillWhenCharged(selectedSkill));
+            }
 
             // Set next skill time
             nextSkillTime = Time.time + skillCooldown + Random.Range(-randomVariance, randomVariance);
-
-            if (enableDebugLogs)
-            {
-                Debug.Log($"{gameObject.name} AI charging {selectedSkill}");
-            }
-
-            // Start coroutine to execute skill when charged
-            StartCoroutine(ExecuteSkillWhenCharged(selectedSkill));
         }
 
         private IEnumerator ExecuteSkillWhenCharged(SkillType skillType)

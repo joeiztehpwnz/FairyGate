@@ -8,6 +8,7 @@ namespace FairyGate.Combat
     {
         [Header("Skill Configuration")]
         [SerializeField] private CharacterStats characterStats;
+        [SerializeField] private bool isPlayerControlled = true;
         [SerializeField] private SkillExecutionState currentState = SkillExecutionState.Uncharged;
         [SerializeField] private SkillType currentSkill = SkillType.Attack;
         [SerializeField] private float chargeProgress = 0f;
@@ -18,6 +19,7 @@ namespace FairyGate.Combat
         [SerializeField] private KeyCode counterKey = KeyCode.Alpha3;
         [SerializeField] private KeyCode smashKey = KeyCode.Alpha4;
         [SerializeField] private KeyCode windmillKey = KeyCode.Alpha5;
+        [SerializeField] private KeyCode rangedAttackKey = KeyCode.Alpha6;
         [SerializeField] private KeyCode cancelKey = KeyCode.Space;
 
         [Header("Debug")]
@@ -35,6 +37,7 @@ namespace FairyGate.Combat
         private MovementController movementController;
         private CombatController combatController;
         private StatusEffectManager statusEffectManager;
+        private AccuracySystem accuracySystem;
 
         // Skill timing
         private Coroutine currentSkillCoroutine;
@@ -44,6 +47,7 @@ namespace FairyGate.Combat
         public SkillExecutionState CurrentState => currentState;
         public SkillType CurrentSkill => currentSkill;
         public float ChargeProgress => chargeProgress;
+        public bool LastRangedAttackHit { get; private set; }
 
         private void Awake()
         {
@@ -52,6 +56,7 @@ namespace FairyGate.Combat
             movementController = GetComponent<MovementController>();
             combatController = GetComponent<CombatController>();
             statusEffectManager = GetComponent<StatusEffectManager>();
+            accuracySystem = GetComponent<AccuracySystem>();
 
             if (characterStats == null)
             {
@@ -69,15 +74,35 @@ namespace FairyGate.Combat
 
         private void HandleSkillInput()
         {
+            // Only process keyboard input for player-controlled characters
+            if (!isPlayerControlled) return;
+
             // Cancel skill input
             if (Input.GetKeyDown(cancelKey))
             {
+                if (currentState == SkillExecutionState.Aiming)
+                {
+                    CancelAim();
+                    return;
+                }
+
                 CancelSkill();
                 return;
             }
 
-            // Skill execution input (if skill is charged)
-            if (currentState == SkillExecutionState.Charged)
+            // RangedAttack firing input (if ranged attack is being aimed)
+            if (currentState == SkillExecutionState.Aiming && currentSkill == SkillType.RangedAttack)
+            {
+                if (Input.GetKeyDown(rangedAttackKey))
+                {
+                    ExecuteSkill(SkillType.RangedAttack);
+                    return;
+                }
+            }
+
+            // Skill execution input (if skill is charged) - only for offensive skills
+            // Defensive skills auto-execute after charging
+            if (currentState == SkillExecutionState.Charged && !IsDefensiveSkill(currentSkill))
             {
                 if (Input.GetKeyDown(GetSkillKey(currentSkill)))
                 {
@@ -86,7 +111,7 @@ namespace FairyGate.Combat
                 }
             }
 
-            // Skill charging input (if not currently busy)
+            // Skill charging/aiming input (if not currently busy)
             if (currentState == SkillExecutionState.Uncharged || currentState == SkillExecutionState.Charged)
             {
                 SkillType? inputSkill = GetSkillFromInput();
@@ -94,7 +119,21 @@ namespace FairyGate.Combat
                 {
                     if (currentSkill != inputSkill.Value || currentState == SkillExecutionState.Uncharged)
                     {
-                        StartCharging(inputSkill.Value);
+                        // Attack skill executes immediately without charging
+                        if (inputSkill.Value == SkillType.Attack)
+                        {
+                            ExecuteSkill(SkillType.Attack);
+                        }
+                        // RangedAttack skill enters aiming state
+                        else if (inputSkill.Value == SkillType.RangedAttack)
+                        {
+                            StartAiming(SkillType.RangedAttack);
+                        }
+                        // Other skills charge normally
+                        else
+                        {
+                            StartCharging(inputSkill.Value);
+                        }
                     }
                 }
             }
@@ -113,7 +152,31 @@ namespace FairyGate.Combat
 
         public bool CanExecuteSkill(SkillType skillType)
         {
+            // Attack can be executed immediately if basic conditions are met
+            if (skillType == SkillType.Attack)
+            {
+                return CanExecuteAttack();
+            }
+
+            // RangedAttack can be executed when aiming
+            if (skillType == SkillType.RangedAttack)
+            {
+                return currentSkill == skillType && currentState == SkillExecutionState.Aiming;
+            }
+
+            // Other skills require charging first
             return currentSkill == skillType && currentState == SkillExecutionState.Charged;
+        }
+
+        public bool CanExecuteAttack()
+        {
+            if (!combatController.IsInCombat) return false;
+            if (!canAct) return false;
+            if (currentState != SkillExecutionState.Uncharged && currentState != SkillExecutionState.Charged) return false;
+
+            // Check stamina requirements
+            int requiredStamina = GetSkillStaminaCost(SkillType.Attack);
+            return staminaSystem.HasStaminaFor(requiredStamina);
         }
 
         public void StartCharging(SkillType skillType)
@@ -218,6 +281,79 @@ namespace FairyGate.Combat
             OnSkillCancelled.Invoke(skilltToCancel);
         }
 
+        private void StartAiming(SkillType skillType)
+        {
+            if (skillType != SkillType.RangedAttack)
+            {
+                Debug.LogWarning($"StartAiming called with non-ranged skill: {skillType}");
+                return;
+            }
+
+            if (!combatController.IsInCombat)
+            {
+                if (enableDebugLogs)
+                    Debug.Log($"{gameObject.name} cannot aim: not in combat");
+                return;
+            }
+
+            if (combatController.CurrentTarget == null)
+            {
+                if (enableDebugLogs)
+                    Debug.Log($"{gameObject.name} cannot aim: no target");
+                return;
+            }
+
+            // STAMINA CHECK MOVED HERE (before aiming starts)
+            int requiredStamina = GetSkillStaminaCost(SkillType.RangedAttack);
+            if (!staminaSystem.HasStaminaFor(requiredStamina))
+            {
+                if (enableDebugLogs)
+                    Debug.Log($"{gameObject.name} cannot aim: insufficient stamina");
+                return;
+            }
+
+            // Check if target in range (use weapon range)
+            float weaponRange = weaponController.WeaponData != null
+                ? weaponController.WeaponData.range
+                : CombatConstants.RANGED_ATTACK_BASE_RANGE;
+
+            float distanceToTarget = Vector3.Distance(transform.position, combatController.CurrentTarget.position);
+            if (distanceToTarget > weaponRange)
+            {
+                if (enableDebugLogs)
+                    Debug.Log($"{gameObject.name} cannot aim: target out of range ({distanceToTarget:F1} > {weaponRange})");
+                return;
+            }
+
+            currentSkill = skillType;
+            currentState = SkillExecutionState.Aiming;
+
+            // Start accuracy tracking
+            if (accuracySystem != null)
+                accuracySystem.StartAiming(combatController.CurrentTarget);
+
+            // Apply movement restriction
+            movementController.ApplySkillMovementRestriction(skillType, currentState);
+
+            if (enableDebugLogs)
+                Debug.Log($"{gameObject.name} started aiming RangedAttack");
+        }
+
+        private void CancelAim()
+        {
+            if (currentState != SkillExecutionState.Aiming) return;
+
+            if (enableDebugLogs)
+                Debug.Log($"{gameObject.name} cancelled RangedAttack aim");
+
+            if (accuracySystem != null)
+                accuracySystem.StopAiming();
+
+            currentState = SkillExecutionState.Uncharged;
+            currentSkill = SkillType.Attack;
+            movementController.SetMovementModifier(1f);
+        }
+
         private IEnumerator ChargeSkill(SkillType skillType)
         {
             float chargeTime = CalculateChargeTime(skillType);
@@ -242,16 +378,34 @@ namespace FairyGate.Combat
             currentState = SkillExecutionState.Charged;
             chargeProgress = 1f;
 
+            // Apply movement restrictions for charged state
+            movementController.ApplySkillMovementRestriction(skillType, currentState);
+
             if (enableDebugLogs)
             {
                 Debug.Log($"{gameObject.name} {skillType} fully charged and ready to execute");
             }
 
             OnSkillCharged.Invoke(skillType);
+
+            // Auto-execute defensive skills after charging
+            if (IsDefensiveSkill(skillType))
+            {
+                ExecuteSkill(skillType);
+            }
         }
 
         private IEnumerator ExecuteSkillCoroutine(SkillType skillType)
         {
+            // SPECIAL HANDLING FOR RANGED ATTACK
+            if (skillType == SkillType.RangedAttack)
+            {
+                // RangedAttack uses custom flow: Aiming → Fire → Recovery
+                yield return StartCoroutine(ExecuteRangedAttackCoroutine());
+                yield break;
+            }
+
+            // STANDARD FLOW FOR OTHER SKILLS
             // Startup phase
             currentState = SkillExecutionState.Startup;
             movementController.ApplySkillMovementRestriction(skillType, currentState);
@@ -306,6 +460,117 @@ namespace FairyGate.Combat
             }
         }
 
+        private IEnumerator ExecuteRangedAttackCoroutine()
+        {
+            // Validation checks
+            if (currentState != SkillExecutionState.Aiming)
+            {
+                if (enableDebugLogs)
+                    Debug.Log($"{gameObject.name} cannot fire: not aiming (state: {currentState})");
+                yield break;
+            }
+
+            if (combatController.CurrentTarget == null)
+            {
+                if (enableDebugLogs)
+                    Debug.Log($"{gameObject.name} cannot fire: target lost");
+                CancelAim();
+                yield break;
+            }
+
+            // Range check (use weapon range)
+            float weaponRange = weaponController.WeaponData != null
+                ? weaponController.WeaponData.range
+                : CombatConstants.RANGED_ATTACK_BASE_RANGE;
+
+            float distanceToTarget = Vector3.Distance(transform.position, combatController.CurrentTarget.position);
+            if (distanceToTarget > weaponRange)
+            {
+                if (enableDebugLogs)
+                    Debug.Log($"{gameObject.name} cannot fire: target out of range");
+                CancelAim();
+                yield break;
+            }
+
+            // Consume stamina
+            int staminaCost = GetSkillStaminaCost(SkillType.RangedAttack);
+            if (!staminaSystem.ConsumeStamina(staminaCost))
+            {
+                if (enableDebugLogs)
+                    Debug.Log($"{gameObject.name} insufficient stamina to fire RangedAttack");
+                CancelAim();
+                yield break;
+            }
+
+            // Enter Active state (brief, for interaction processing)
+            currentState = SkillExecutionState.Active;
+            movementController.SetMovementModifier(0f);
+
+            // Roll hit chance
+            bool isHit = accuracySystem != null ? accuracySystem.RollHitChance() : false;
+            LastRangedAttackHit = isHit; // Store for interaction manager to check
+
+            if (enableDebugLogs)
+            {
+                float accuracy = accuracySystem != null ? accuracySystem.CurrentAccuracy : 0f;
+                Debug.Log($"{gameObject.name} fired RangedAttack at {accuracy:F1}% accuracy → {(isHit ? "HIT" : "MISS")}");
+            }
+
+            // ALWAYS process through interaction manager (even on miss)
+            // This allows defensive skills to respond properly
+            CombatInteractionManager.Instance?.ProcessSkillExecution(this, SkillType.RangedAttack);
+
+            // Show visual trail based on hit/miss
+            if (isHit)
+            {
+                // HIT: Show hit trail (yellow → red)
+                DrawRangedAttackTrail(transform.position, combatController.CurrentTarget.position + Vector3.up * 1f, true);
+            }
+            else
+            {
+                // MISS: Show miss trail (yellow → gray)
+                Vector3 missPosition = accuracySystem != null
+                    ? accuracySystem.CalculateMissPosition()
+                    : combatController.CurrentTarget.position;
+
+                DrawRangedAttackTrail(transform.position, missPosition, false);
+            }
+
+            // Stop aiming
+            if (accuracySystem != null)
+                accuracySystem.StopAiming();
+
+            // Brief active time for interaction processing
+            yield return new WaitForSeconds(0.1f);
+
+            // Recovery phase
+            currentState = SkillExecutionState.Recovery;
+            movementController.SetMovementModifier(0f);
+
+            float recoveryTime = CombatConstants.RANGED_ATTACK_RECOVERY_TIME;
+
+            // Scale recovery by weapon speed (faster weapons = faster recovery)
+            if (weaponController.WeaponData != null)
+            {
+                recoveryTime = recoveryTime / weaponController.WeaponData.speed;
+            }
+
+            yield return new WaitForSeconds(recoveryTime);
+
+            // Skill complete
+            currentState = SkillExecutionState.Uncharged;
+            currentSkill = SkillType.Attack;
+            chargeProgress = 0f;
+            movementController.SetMovementModifier(1f);
+
+            OnSkillExecuted.Invoke(SkillType.RangedAttack, isHit);
+
+            if (enableDebugLogs)
+            {
+                Debug.Log($"{gameObject.name} RangedAttack execution complete (hit: {isHit})");
+            }
+        }
+
         private IEnumerator HandleDefensiveWaitingState(SkillType skillType)
         {
             // Defensive skills wait for incoming attacks or manual cancellation
@@ -352,6 +617,50 @@ namespace FairyGate.Combat
             return true;
         }
 
+        private void DrawRangedAttackTrail(Vector3 from, Vector3 to, bool wasHit)
+        {
+            var weapon = weaponController.WeaponData;
+
+            // Get weapon-specific visual properties or use defaults
+            Color startColor = Color.yellow;
+            Color endColor = wasHit ? Color.red : Color.gray;
+            float width = 0.08f;
+            string projectileType = "Projectile";
+
+            if (weapon != null && weapon.isRangedWeapon)
+            {
+                startColor = weapon.trailColorStart;
+                endColor = wasHit ? weapon.trailColorEnd : Color.gray;
+                width = weapon.trailWidth;
+                projectileType = weapon.projectileType;
+            }
+
+            // Create temporary object for trail
+            GameObject trailObj = new GameObject($"{projectileType}Trail");
+            LineRenderer line = trailObj.AddComponent<LineRenderer>();
+
+            // Configure line appearance
+            line.startWidth = width;
+            line.endWidth = width;
+            line.material = new Material(Shader.Find("Sprites/Default"));
+            line.startColor = startColor;
+            line.endColor = endColor;
+            line.positionCount = 2;
+
+            // Set positions
+            line.SetPosition(0, from + Vector3.up * 1.5f); // Shooter position
+            line.SetPosition(1, to); // Target or miss position
+
+            // Play weapon-specific sound if available
+            if (weapon != null && weapon.fireSound != null)
+            {
+                AudioSource.PlayClipAtPoint(weapon.fireSound, from);
+            }
+
+            // Fade out and destroy
+            Destroy(trailObj, CombatConstants.RANGED_ATTACK_TRAIL_DURATION);
+        }
+
         private float CalculateChargeTime(SkillType skillType)
         {
             float baseChargeTime = CombatConstants.BASE_SKILL_CHARGE_TIME;
@@ -368,6 +677,7 @@ namespace FairyGate.Combat
                 SkillType.Counter => CombatConstants.COUNTER_STAMINA_COST,
                 SkillType.Smash => CombatConstants.SMASH_STAMINA_COST,
                 SkillType.Windmill => CombatConstants.WINDMILL_STAMINA_COST,
+                SkillType.RangedAttack => CombatConstants.RANGED_ATTACK_STAMINA_COST,
                 _ => 0
             };
         }
@@ -379,6 +689,7 @@ namespace FairyGate.Combat
             if (Input.GetKeyDown(counterKey)) return SkillType.Counter;
             if (Input.GetKeyDown(smashKey)) return SkillType.Smash;
             if (Input.GetKeyDown(windmillKey)) return SkillType.Windmill;
+            if (Input.GetKeyDown(rangedAttackKey)) return SkillType.RangedAttack;
             return null;
         }
 
@@ -391,6 +702,7 @@ namespace FairyGate.Combat
                 SkillType.Counter => counterKey,
                 SkillType.Smash => smashKey,
                 SkillType.Windmill => windmillKey,
+                SkillType.RangedAttack => rangedAttackKey,
                 _ => KeyCode.None
             };
         }
@@ -428,8 +740,21 @@ namespace FairyGate.Combat
                 Vector3 screenPos = Camera.main.WorldToScreenPoint(transform.position + Vector3.up * 1.5f);
                 screenPos.y = Screen.height - screenPos.y;
 
-                string skillText = $"Skill: {currentSkill}\nState: {currentState}\nCharge: {chargeProgress:F1}";
-                GUI.Label(new Rect(screenPos.x - 50, screenPos.y, 100, 60), skillText);
+                string skillText = $"Skill: {currentSkill}\nState: {currentState}";
+
+                // Show charge progress for charging skills
+                if (currentState == SkillExecutionState.Charging || currentState == SkillExecutionState.Charged)
+                {
+                    skillText += $"\nCharge: {chargeProgress:F1}";
+                }
+
+                // Show accuracy for aiming skills
+                if (currentState == SkillExecutionState.Aiming && accuracySystem != null)
+                {
+                    skillText += $"\nAccuracy: {accuracySystem.CurrentAccuracy:F1}%";
+                }
+
+                GUI.Label(new Rect(screenPos.x - 50, screenPos.y, 100, 80), skillText);
             }
         }
     }

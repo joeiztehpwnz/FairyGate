@@ -13,6 +13,7 @@ namespace FairyGate.Combat
         [SerializeField] private bool showRangeVisualization = true;
         [SerializeField] private bool showCombatCalculations = true;
         [SerializeField] private bool showSystemInfo = true;
+        [SerializeField] private bool showTestAIInfo = true;
 
         [Header("Visualization Settings")]
         [SerializeField] private Color playerColor = Color.blue;
@@ -33,6 +34,8 @@ namespace FairyGate.Combat
         private StatusEffectManager statusEffectManager;
         private WeaponController weaponController;
         private KnockdownMeterTracker knockdownMeter;
+        private AccuracySystem accuracySystem;
+        private TestRepeaterAI testAI;
 
         private GUIStyle debugStyle;
         private StringBuilder debugText = new StringBuilder();
@@ -46,6 +49,8 @@ namespace FairyGate.Combat
             statusEffectManager = GetComponent<StatusEffectManager>();
             weaponController = GetComponent<WeaponController>();
             knockdownMeter = GetComponent<KnockdownMeterTracker>();
+            accuracySystem = GetComponent<AccuracySystem>();
+            testAI = GetComponent<TestRepeaterAI>();
         }
 
         private void Start()
@@ -109,8 +114,14 @@ namespace FairyGate.Combat
                 currentPos.y += lineHeight * 2;
             }
 
+            if (showTestAIInfo)
+            {
+                AddTestAIInfo();
+                currentPos.y += lineHeight * 3;
+            }
+
             // Draw the compiled debug text
-            GUI.Label(new Rect(infoPosition.x, infoPosition.y, 400, 600), debugText.ToString(), debugStyle);
+            GUI.Label(new Rect(infoPosition.x, infoPosition.y, 400, 700), debugText.ToString(), debugStyle);
         }
 
         private void AddCharacterInfo()
@@ -144,7 +155,35 @@ namespace FairyGate.Combat
             {
                 debugText.AppendLine($"Current Skill: {skillSystem.CurrentSkill}");
                 debugText.AppendLine($"Skill State: {skillSystem.CurrentState}");
-                debugText.AppendLine($"Charge Progress: {skillSystem.ChargeProgress:P0}");
+
+                // Show accuracy for aiming skills
+                if (skillSystem.CurrentState == SkillExecutionState.Aiming && accuracySystem != null)
+                {
+                    bool targetMoving = false;
+                    if (accuracySystem.CurrentTarget != null)
+                    {
+                        var targetMovement = accuracySystem.CurrentTarget.GetComponent<MovementController>();
+                        targetMoving = targetMovement != null && targetMovement.IsMoving();
+                    }
+
+                    string movementState = targetMoving ? "MOVING" : "STATIONARY";
+                    float buildRate = accuracySystem.GetAccuracyBuildRate();
+
+                    // Show weapon-specific info if available
+                    string weaponInfo = "";
+                    if (weaponController?.WeaponData != null && weaponController.WeaponData.isRangedWeapon)
+                    {
+                        weaponInfo = $" ({weaponController.WeaponData.projectileType})";
+                    }
+
+                    debugText.AppendLine($"Accuracy: {accuracySystem.CurrentAccuracy:F1}%{weaponInfo}");
+                    debugText.AppendLine($"Target: {movementState} (Rate: {buildRate:F1}%/s)");
+                }
+                else
+                {
+                    // Show charge progress for charging skills
+                    debugText.AppendLine($"Charge Progress: {skillSystem.ChargeProgress:P0}");
+                }
             }
 
             if (weaponController != null && weaponController.WeaponData != null)
@@ -198,6 +237,34 @@ namespace FairyGate.Combat
             if (GameManager.Instance != null && GameManager.Instance.IsGameEnded())
             {
                 debugText.AppendLine("GAME ENDED - Press R to reset");
+            }
+        }
+
+        private void AddTestAIInfo()
+        {
+            if (testAI != null && testAI.enabled)
+            {
+                debugText.AppendLine("=== TEST MODE ===");
+                debugText.AppendLine($"Repeating: {testAI.SelectedSkill}");
+                debugText.AppendLine($"Delay: {testAI.RepeatDelay:F1}s");
+                debugText.AppendLine($"Next Action: {testAI.TimeUntilNextAction:F1}s");
+
+                string flags = "";
+                if (testAI.MaintainDefensiveState) flags += "[Maintain] ";
+                if (testAI.InfiniteStamina) flags += "[∞ Stam] ";
+                if (testAI.SkipRangedAiming) flags += "[Skip Aim] ";
+                if (testAI.AddRandomDelay) flags += "[Random] ";
+                if (testAI.EnableMovement) flags += "[Move] ";
+
+                if (!string.IsNullOrEmpty(flags))
+                {
+                    debugText.AppendLine($"Flags: {flags}");
+                }
+
+                if (testAI.EnableMovement)
+                {
+                    debugText.AppendLine($"Optimal Range: {testAI.OptimalRange:F1}");
+                }
             }
         }
 
@@ -263,6 +330,7 @@ namespace FairyGate.Combat
         public void SetShowRangeVisualization(bool show) => showRangeVisualization = show;
         public void SetShowCombatCalculations(bool show) => showCombatCalculations = show;
         public void SetShowSystemInfo(bool show) => showSystemInfo = show;
+        public void SetShowTestAIInfo(bool show) => showTestAIInfo = show;
 
         public void ToggleAllDebugInfo()
         {

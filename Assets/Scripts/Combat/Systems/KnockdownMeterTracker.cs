@@ -14,6 +14,8 @@ namespace FairyGate.Combat
         [SerializeField] private CharacterStats characterStats;
         [SerializeField] private bool enableDebugLogs = true;
 
+        private Transform lastAttacker;
+
         [Header("Events")]
         public UnityEvent<float, float> OnMeterChanged = new UnityEvent<float, float>(); // current, max
         public UnityEvent OnMeterKnockdownTriggered = new UnityEvent();
@@ -51,8 +53,14 @@ namespace FairyGate.Combat
             }
         }
 
-        public void AddMeterBuildup(int attackDamage, CharacterStats attackerStats)
+        public void AddMeterBuildup(int attackDamage, CharacterStats attackerStats, Transform attacker = null)
         {
+            // Store the last attacker for displacement calculation
+            if (attacker != null)
+            {
+                lastAttacker = attacker;
+            }
+
             // Calculate buildup: Base + (Attacker Strength / 10) - (Defender Focus / 30)
             float buildup = CombatConstants.ATTACK_KNOCKDOWN_BUILDUP;
             buildup += (attackerStats.strength / CombatConstants.STRENGTH_KNOCKDOWN_DIVISOR);
@@ -92,12 +100,24 @@ namespace FairyGate.Combat
                 Debug.Log($"{gameObject.name} knockdown meter reached threshold! Triggering meter knockdown.");
             }
 
-            // Apply meter-based knockdown
+            // Apply meter-based knockdown with displacement
             if (statusEffectManager != null)
             {
-                float knockdownDuration = DamageCalculator.CalculateKnockdownDuration(characterStats);
-                var knockdownEffect = new StatusEffect(StatusEffectType.MeterKnockdown, knockdownDuration);
-                statusEffectManager.ApplyStatusEffect(knockdownEffect);
+                Vector3 displacement = Vector3.zero;
+
+                if (lastAttacker != null)
+                {
+                    // Calculate displacement away from the last attacker
+                    Vector3 knockbackDirection = (transform.position - lastAttacker.position).normalized;
+                    displacement = knockbackDirection * CombatConstants.METER_KNOCKBACK_DISTANCE;
+                }
+                else
+                {
+                    // Default backward displacement if no attacker is known
+                    displacement = -transform.forward * CombatConstants.METER_KNOCKBACK_DISTANCE;
+                }
+
+                statusEffectManager.ApplyMeterKnockdown(displacement);
             }
 
             OnMeterKnockdownTriggered.Invoke();
@@ -137,7 +157,7 @@ namespace FairyGate.Combat
         }
 
         // For Smash and Windmill skills that bypass the meter system entirely
-        public void TriggerImmediateKnockdown()
+        public void TriggerImmediateKnockdown(Vector3 displacement = default)
         {
             if (enableDebugLogs)
             {
@@ -146,9 +166,14 @@ namespace FairyGate.Combat
 
             if (statusEffectManager != null)
             {
-                float knockdownDuration = DamageCalculator.CalculateKnockdownDuration(characterStats);
-                var knockdownEffect = new StatusEffect(StatusEffectType.InteractionKnockdown, knockdownDuration);
-                statusEffectManager.ApplyStatusEffect(knockdownEffect);
+                if (displacement != Vector3.zero)
+                {
+                    statusEffectManager.ApplyInteractionKnockdown(displacement);
+                }
+                else
+                {
+                    statusEffectManager.ApplyInteractionKnockdown();
+                }
             }
 
             // NOTE: Smash/Windmill do NOT affect the knockdown meter system at all

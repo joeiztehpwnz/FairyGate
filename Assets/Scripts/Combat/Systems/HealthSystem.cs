@@ -21,9 +21,27 @@ namespace FairyGate.Combat
         private StaminaSystem staminaSystem;
         private StatusEffectManager statusEffectManager;
         private CombatController combatController;
+        private EquipmentManager equipmentManager;
 
         public int CurrentHealth => currentHealth;
-        public int MaxHealth => characterStats?.MaxHealth ?? CombatConstants.BASE_HEALTH;
+        public int MaxHealth
+        {
+            get
+            {
+                int baseHealth = characterStats?.MaxHealth ?? CombatConstants.BASE_HEALTH;
+                int bonus = 0;
+
+                if (equipmentManager != null)
+                {
+                    if (equipmentManager.CurrentArmor != null)
+                        bonus += equipmentManager.CurrentArmor.maxHealthBonus;
+                    if (equipmentManager.CurrentAccessory != null)
+                        bonus += equipmentManager.CurrentAccessory.maxHealthBonus;
+                }
+
+                return baseHealth + bonus;
+            }
+        }
         public bool IsAlive => currentHealth > 0;
         public float HealthPercentage => (float)currentHealth / MaxHealth;
 
@@ -32,6 +50,7 @@ namespace FairyGate.Combat
             staminaSystem = GetComponent<StaminaSystem>();
             statusEffectManager = GetComponent<StatusEffectManager>();
             combatController = GetComponent<CombatController>();
+            equipmentManager = GetComponent<EquipmentManager>();
 
             if (characterStats == null)
             {

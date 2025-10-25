@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8fafeb5fdfa40f0aa990b8fca9d9cd2b, type: 3}
+  m_Name: HeavyPlatemail
+  m_EditorClassIdentifier: 
+  equipmentName: Heavy Platemail
+  slot: 0
+  tier: 1
+  strengthBonus: 0
+  dexterityBonus: 0
+  physicalDefenseBonus: 15
+  focusBonus: 3
+  maxHealthBonus: 30
+  maxStaminaBonus: 0
+  movementSpeedBonus: -1
+  icon: {fileID: 0}
+  equipmentPrefab: {fileID: 0}
+  description: Heavy iron armor that provides excellent protection at the cost of
+    mobility.

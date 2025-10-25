@@ -10,6 +10,9 @@ namespace FairyGate.Combat
         [SerializeField] private int currentStamina;
         [SerializeField] private bool isResting = false;
 
+        // Float accumulator for precise drain calculations
+        private float staminaAccumulator;
+
         [Header("Auto-Cancel Settings")]
         [SerializeField] private float gracePeriod = CombatConstants.AUTO_CANCEL_GRACE_PERIOD;
         private float graceTimer = 0f;
@@ -24,9 +27,27 @@ namespace FairyGate.Combat
 
         private CombatController combatController;
         private SkillSystem skillSystem;
+        private EquipmentManager equipmentManager;
 
         public int CurrentStamina => currentStamina;
-        public int MaxStamina => characterStats?.MaxStamina ?? CombatConstants.BASE_STAMINA;
+        public int MaxStamina
+        {
+            get
+            {
+                int baseStamina = characterStats?.MaxStamina ?? CombatConstants.BASE_STAMINA;
+                int bonus = 0;
+
+                if (equipmentManager != null)
+                {
+                    if (equipmentManager.CurrentArmor != null)
+                        bonus += equipmentManager.CurrentArmor.maxStaminaBonus;
+                    if (equipmentManager.CurrentAccessory != null)
+                        bonus += equipmentManager.CurrentAccessory.maxStaminaBonus;
+                }
+
+                return baseStamina + bonus;
+            }
+        }
         public bool IsResting => isResting;
         public float StaminaPercentage => (float)currentStamina / MaxStamina;
 
@@ -34,6 +55,7 @@ namespace FairyGate.Combat
         {
             combatController = GetComponent<CombatController>();
             skillSystem = GetComponent<SkillSystem>();
+            equipmentManager = GetComponent<EquipmentManager>();
 
             if (characterStats == null)
             {
@@ -42,6 +64,7 @@ namespace FairyGate.Combat
             }
 
             currentStamina = MaxStamina;
+            staminaAccumulator = currentStamina;
         }
 
         private void Update()
@@ -81,7 +104,8 @@ namespace FairyGate.Combat
         public void RegenerateStamina(float amount)
         {
             int oldStamina = currentStamina;
-            currentStamina = Mathf.Min(MaxStamina, currentStamina + Mathf.RoundToInt(amount));
+            staminaAccumulator = Mathf.Min(MaxStamina, staminaAccumulator + amount);
+            currentStamina = Mathf.FloorToInt(staminaAccumulator);
 
             if (currentStamina != oldStamina)
             {
@@ -96,8 +120,16 @@ namespace FairyGate.Combat
             float modifiedDrainRate = DamageCalculator.CalculateStaminaDrainRate(drainRate, characterStats);
             float drainAmount = modifiedDrainRate * deltaTime;
 
+            // Use float accumulator for precise calculations
             int oldStamina = currentStamina;
-            currentStamina = Mathf.Max(0, currentStamina - Mathf.RoundToInt(drainAmount));
+            staminaAccumulator = Mathf.Max(0f, staminaAccumulator - drainAmount);
+            currentStamina = Mathf.FloorToInt(staminaAccumulator);
+
+            // Debug logging (reduced frequency to avoid spam)
+            if (drainRate > 0 && Time.frameCount % 60 == 0) // Log once per second at 60fps
+            {
+                Debug.Log($"{gameObject.name} stamina drain: base={drainRate:F2}/s, modified={modifiedDrainRate:F2}/s, accumulator={staminaAccumulator:F2}, displayed={currentStamina}");
+            }
 
             if (currentStamina != oldStamina)
             {
@@ -198,6 +230,7 @@ namespace FairyGate.Combat
         public void SetStamina(int value)
         {
             currentStamina = Mathf.Clamp(value, 0, MaxStamina);
+            staminaAccumulator = currentStamina;
             OnStaminaChanged.Invoke(currentStamina, MaxStamina);
         }
 
@@ -211,6 +244,7 @@ namespace FairyGate.Combat
             if (characterStats != null)
             {
                 currentStamina = Mathf.Clamp(currentStamina, 0, MaxStamina);
+                staminaAccumulator = currentStamina;
             }
         }
     }

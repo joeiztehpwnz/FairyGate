@@ -16,6 +16,12 @@ namespace FairyGate.Combat
         public const float KNOCKDOWN_METER_THRESHOLD = 100f;
         public const float KNOCKDOWN_DURATION = 2.0f;
 
+        // Knockback Distances
+        public const float COUNTER_KNOCKBACK_DISTANCE = 1.5f;
+        public const float SMASH_KNOCKBACK_DISTANCE = 2.0f;
+        public const float WINDMILL_KNOCKBACK_DISTANCE = 1.8f;
+        public const float METER_KNOCKBACK_DISTANCE = 1.2f;
+
         // Damage Reduction
         public const float SMASH_VS_DEFENSE_DAMAGE_REDUCTION = 0.75f;
         public const float MAX_DAMAGE_REDUCTION = 0.90f;
@@ -57,5 +63,22 @@ namespace FairyGate.Combat
         public const float DEFENSE_MOVEMENT_SPEED_MODIFIER = 0.7f; // 30% reduction
         public const float COUNTER_MOVEMENT_SPEED_MODIFIER = 0.7f; // 30% reduction
         public const float WINDMILL_MOVEMENT_SPEED_MODIFIER = 0.7f; // 30% reduction
+
+        // RangedAttack Skill Constants
+        public const int RANGED_ATTACK_STAMINA_COST = 3;
+        public const float RANGED_ATTACK_BASE_RANGE = 6.0f;    // Default if weapon doesn't override
+        public const int RANGED_ATTACK_BASE_DAMAGE = 10;       // Default if weapon doesn't override
+
+        // Accuracy System Constants
+        public const float ACCURACY_BUILD_STATIONARY = 40f;     // % per second
+        public const float ACCURACY_BUILD_MOVING = 20f;         // % per second
+        public const float ACCURACY_DECAY_WHILE_MOVING = 10f;   // % per second
+        public const float FOCUS_ACCURACY_DIVISOR = 20f;
+        public const float MAX_MISS_ANGLE = 45f;                // degrees
+
+        // RangedAttack Movement & Timing
+        public const float RANGED_ATTACK_AIMING_MOVEMENT_MODIFIER = 0.5f; // 50% speed
+        public const float RANGED_ATTACK_RECOVERY_TIME = 0.3f;
+        public const float RANGED_ATTACK_TRAIL_DURATION = 0.5f;
     }
 }
