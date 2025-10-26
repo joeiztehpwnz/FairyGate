@@ -314,26 +314,27 @@ namespace FairyGate.Combat
                     yield return new WaitUntil(() => statusEffectManager.CanAct);
                 }
 
-                // Move toward player if out of optimal range
-                if (player != null)
+                // Move to get within weapon range
+                if (player != null && weaponController != null)
                 {
                     // Use squared distance to avoid expensive sqrt operation
                     float sqrDistanceToPlayer = (transform.position - player.position).sqrMagnitude;
-                    float sqrOptimalFar = (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR) * (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR);
-                    float sqrOptimalNear = (optimalRange - CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR) * (optimalRange - CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR);
+                    float weaponRange = weaponController.WeaponData.range;
+                    float sqrWeaponRange = weaponRange * weaponRange;
+                    float tooCloseThreshold = 0.8f; // Don't get closer than this
+                    float sqrTooClose = tooCloseThreshold * tooCloseThreshold;
 
-                    if (sqrDistanceToPlayer > sqrOptimalFar)
+                    if (sqrDistanceToPlayer > sqrWeaponRange)
                     {
-                        MoveTowardsPlayer();
+                        MoveTowardsPlayer(); // Too far, close the gap
                     }
-                    else if (sqrDistanceToPlayer < sqrOptimalNear)
+                    else if (sqrDistanceToPlayer < sqrTooClose)
                     {
-                        // Too close, back away slightly
-                        StopMovement();
+                        StopMovement(); // Too close, back off
                     }
                     else
                     {
-                        StopMovement();
+                        StopMovement(); // Within weapon range, stay put
                     }
                 }
 
@@ -358,20 +359,27 @@ namespace FairyGate.Combat
                     yield return new WaitUntil(() => statusEffectManager.CanAct);
                 }
 
-                // Move toward player if out of optimal range
-                if (player != null)
+                // Move to get within weapon range
+                if (player != null && weaponController != null)
                 {
                     // Use squared distance to avoid expensive sqrt operation
                     float sqrDistanceToPlayer = (transform.position - player.position).sqrMagnitude;
-                    float sqrOptimalFar = (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_FAR) * (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_FAR);
+                    float weaponRange = weaponController.WeaponData.range;
+                    float sqrWeaponRange = weaponRange * weaponRange;
+                    float tooCloseThreshold = 0.8f; // Don't get closer than this
+                    float sqrTooClose = tooCloseThreshold * tooCloseThreshold;
 
-                    if (sqrDistanceToPlayer > sqrOptimalFar)
+                    if (sqrDistanceToPlayer > sqrWeaponRange)
                     {
-                        MoveTowardsPlayer();
+                        MoveTowardsPlayer(); // Too far, close the gap
+                    }
+                    else if (sqrDistanceToPlayer < sqrTooClose)
+                    {
+                        StopMovement(); // Too close, back off
                     }
                     else
                     {
-                        StopMovement();
+                        StopMovement(); // Within weapon range, stay put
                     }
                 }
 
