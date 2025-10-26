@@ -41,18 +41,18 @@ namespace FairyGate.Combat.UI
             // Unsubscribe from previous target
             if (targetStaminaSystem != null)
             {
-                targetStaminaSystem.OnStaminaChanged.RemoveListener(OnStaminaChanged);
-                targetStaminaSystem.OnRestStarted.RemoveListener(OnRestStarted);
-                targetStaminaSystem.OnRestStopped.RemoveListener(OnRestStopped);
+                targetStaminaSystem.OnStaminaChanged -= OnStaminaChanged;
+                targetStaminaSystem.OnRestStarted -= OnRestStarted;
+                targetStaminaSystem.OnRestStopped -= OnRestStopped;
             }
 
             // Subscribe to new target
             targetStaminaSystem = staminaSystem;
             if (targetStaminaSystem != null)
             {
-                targetStaminaSystem.OnStaminaChanged.AddListener(OnStaminaChanged);
-                targetStaminaSystem.OnRestStarted.AddListener(OnRestStarted);
-                targetStaminaSystem.OnRestStopped.AddListener(OnRestStopped);
+                targetStaminaSystem.OnStaminaChanged += OnStaminaChanged;
+                targetStaminaSystem.OnRestStarted += OnRestStarted;
+                targetStaminaSystem.OnRestStopped += OnRestStopped;
 
                 // Initialize display
                 maxStamina = targetStaminaSystem.MaxStamina;
@@ -162,9 +162,9 @@ namespace FairyGate.Combat.UI
         {
             if (targetStaminaSystem != null)
             {
-                targetStaminaSystem.OnStaminaChanged.RemoveListener(OnStaminaChanged);
-                targetStaminaSystem.OnRestStarted.RemoveListener(OnRestStarted);
-                targetStaminaSystem.OnRestStopped.RemoveListener(OnRestStopped);
+                targetStaminaSystem.OnStaminaChanged -= OnStaminaChanged;
+                targetStaminaSystem.OnRestStarted -= OnRestStarted;
+                targetStaminaSystem.OnRestStopped -= OnRestStopped;
             }
         }
     }

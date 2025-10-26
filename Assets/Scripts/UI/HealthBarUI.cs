@@ -38,14 +38,14 @@ namespace FairyGate.Combat.UI
             // Unsubscribe from previous target
             if (targetHealthSystem != null)
             {
-                targetHealthSystem.OnHealthChanged.RemoveListener(OnHealthChanged);
+                targetHealthSystem.OnHealthChanged -= OnHealthChanged;
             }
 
             // Subscribe to new target
             targetHealthSystem = healthSystem;
             if (targetHealthSystem != null)
             {
-                targetHealthSystem.OnHealthChanged.AddListener(OnHealthChanged);
+                targetHealthSystem.OnHealthChanged += OnHealthChanged;
 
                 // Initialize display
                 maxHealth = targetHealthSystem.MaxHealth;
@@ -125,7 +125,7 @@ namespace FairyGate.Combat.UI
         {
             if (targetHealthSystem != null)
             {
-                targetHealthSystem.OnHealthChanged.RemoveListener(OnHealthChanged);
+                targetHealthSystem.OnHealthChanged -= OnHealthChanged;
             }
         }
     }
