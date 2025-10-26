@@ -138,6 +138,16 @@ namespace FairyGate.Combat.Editor
 
         private static void CreateManagers()
         {
+            // Combat Update Manager (Phase 2 optimization)
+            if (GameObject.Find("CombatUpdateManager") == null)
+            {
+                var cumGO = new GameObject("CombatUpdateManager");
+                var cum = cumGO.AddComponent<CombatUpdateManager>();
+                SetSerializedProperty(cum, "enableDebugLogs", false);
+                SetSerializedProperty(cum, "showUpdateStats", false);
+                Debug.Log("✅ Created CombatUpdateManager");
+            }
+
             // Combat Interaction Manager
             if (GameObject.Find("CombatInteractionManager") == null)
             {
@@ -566,7 +576,7 @@ namespace FairyGate.Combat.Editor
                 }
 
                 // Remove managers
-                var managers = new[] { "CombatInteractionManager", "GameManager" };
+                var managers = new[] { "CombatUpdateManager", "CombatInteractionManager", "GameManager" };
                 foreach (var managerName in managers)
                 {
                     var manager = GameObject.Find(managerName);
