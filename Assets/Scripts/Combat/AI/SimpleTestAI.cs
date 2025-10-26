@@ -148,24 +148,26 @@ namespace FairyGate.Combat
 
             Vector3 directionToPlayer = (player.position - transform.position).normalized;
 
-            // Move toward player if too far, away if too close
+            // Move to get within weapon range
             // Using squared distance comparisons
-            float sqrOptimalFar = (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR) * (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR);
-            float sqrOptimalNear = (optimalRange - CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR) * (optimalRange - CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR);
+            float weaponRange = weaponController?.WeaponData.range ?? 1.5f;
+            float sqrWeaponRange = weaponRange * weaponRange;
+            float tooCloseThreshold = 0.8f;
+            float sqrTooClose = tooCloseThreshold * tooCloseThreshold;
 
-            if (sqrDistanceToPlayer > sqrOptimalFar)
+            if (sqrDistanceToPlayer > sqrWeaponRange)
             {
-                // Move toward player
+                // Too far, move toward player
                 MoveInDirection(directionToPlayer);
             }
-            else if (sqrDistanceToPlayer < sqrOptimalNear)
+            else if (sqrDistanceToPlayer < sqrTooClose)
             {
-                // Move away from player
+                // Too close, move away from player
                 MoveInDirection(-directionToPlayer);
             }
             else
             {
-                // Stop movement when in optimal range
+                // Within weapon range, stop movement
                 movementController.SetMovementInput(Vector3.zero);
             }
         }
@@ -230,6 +232,16 @@ namespace FairyGate.Combat
             // Use the skill - Attack executes immediately, others require charging
             if (selectedSkill == SkillType.Attack)
             {
+                // Check weapon range before executing Attack
+                if (!IsWeaponInRange())
+                {
+                    if (enableDebugLogs)
+                    {
+                        Debug.Log($"{gameObject.name} AI cancelled Attack - target out of weapon range");
+                    }
+                    return;
+                }
+
                 // Attack executes immediately
                 skillSystem.ExecuteSkill(SkillType.Attack);
 
@@ -267,18 +279,15 @@ namespace FairyGate.Combat
             // Execute if still charged and conditions are met
             if (skillSystem.CurrentState == SkillExecutionState.Charged && skillSystem.CurrentSkill == skillType)
             {
-                // Double-check range for offensive skills
-                if (SpeedResolver.IsOffensiveSkill(skillType))
+                // Check weapon range before executing (skip for ranged attacks and defensive skills)
+                if (!IsWeaponInRange() && skillType != SkillType.RangedAttack && SpeedResolver.IsOffensiveSkill(skillType))
                 {
-                    if (!weaponController.IsInRange(player))
+                    skillSystem.CancelSkill();
+                    if (enableDebugLogs)
                     {
-                        skillSystem.CancelSkill();
-                        if (enableDebugLogs)
-                        {
-                            Debug.Log($"{gameObject.name} AI cancelled {skillType} - target moved out of range");
-                        }
-                        yield break;
+                        Debug.Log($"{gameObject.name} AI cancelled {skillType} - target out of weapon range");
                     }
+                    yield break;
                 }
 
                 skillSystem.ExecuteSkill(skillType);

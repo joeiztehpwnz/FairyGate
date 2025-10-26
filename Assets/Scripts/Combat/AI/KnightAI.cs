@@ -81,17 +81,27 @@ namespace FairyGate.Combat
             float chargeElapsed = 0f;
             while (chargeElapsed < chargeSmashDuration)
             {
-                // Use squared distance to avoid expensive sqrt operation
-                float sqrDistance = (transform.position - player.position).sqrMagnitude;
-                float sqrOptimalFar = (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR) * (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR);
+                if (player != null && weaponController != null)
+                {
+                    // Use squared distance to avoid expensive sqrt operation
+                    float sqrDistance = (transform.position - player.position).sqrMagnitude;
+                    float weaponRange = weaponController.WeaponData.range;
+                    float sqrWeaponRange = weaponRange * weaponRange;
+                    float tooCloseThreshold = 0.8f;
+                    float sqrTooClose = tooCloseThreshold * tooCloseThreshold;
 
-                if (IsPlayerInRange() && sqrDistance > sqrOptimalFar)
-                {
-                    MoveTowardsPlayer();
-                }
-                else
-                {
-                    StopMovement();
+                    if (sqrDistance > sqrWeaponRange)
+                    {
+                        MoveTowardsPlayer(); // Too far, close the gap
+                    }
+                    else if (sqrDistance < sqrTooClose)
+                    {
+                        StopMovement(); // Too close
+                    }
+                    else
+                    {
+                        StopMovement(); // Within weapon range
+                    }
                 }
 
                 chargeElapsed += Time.deltaTime;
@@ -138,14 +148,28 @@ namespace FairyGate.Combat
                 float recoveryElapsed = 0f;
                 while (recoveryElapsed < recoveryDuration)
                 {
-                    // Slowly approach if too far, but don't be aggressive
-                    // Use squared distance to avoid expensive sqrt operation
-                    float sqrDistanceToPlayer = (transform.position - player.position).sqrMagnitude;
-                    float sqrOptimalFar = (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_FAR) * (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_FAR);
-
-                    if (sqrDistanceToPlayer > sqrOptimalFar)
+                    if (player != null && weaponController != null)
                     {
-                        MoveTowardsPlayer();
+                        // Slowly approach if too far, but don't be aggressive
+                        // Use squared distance to avoid expensive sqrt operation
+                        float sqrDistanceToPlayer = (transform.position - player.position).sqrMagnitude;
+                        float weaponRange = weaponController.WeaponData.range;
+                        float sqrWeaponRange = weaponRange * weaponRange;
+                        float tooCloseThreshold = 0.8f;
+                        float sqrTooClose = tooCloseThreshold * tooCloseThreshold;
+
+                        if (sqrDistanceToPlayer > sqrWeaponRange)
+                        {
+                            MoveTowardsPlayer(); // Too far, close the gap
+                        }
+                        else if (sqrDistanceToPlayer < sqrTooClose)
+                        {
+                            StopMovement(); // Too close
+                        }
+                        else
+                        {
+                            StopMovement(); // Within weapon range
+                        }
                     }
                     else
                     {
