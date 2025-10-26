@@ -3,7 +3,7 @@ using UnityEngine;
 namespace FairyGate.Combat
 {
     [RequireComponent(typeof(CharacterController))]
-    public class MovementController : MonoBehaviour
+    public class MovementController : MonoBehaviour, ICombatUpdatable
     {
         [Header("Movement Configuration")]
         [SerializeField] private CharacterStats characterStats;
@@ -45,9 +45,19 @@ namespace FairyGate.Combat
 
             baseMovementSpeed = characterStats.MovementSpeed;
             currentMovementSpeed = baseMovementSpeed;
+
+            // Register with combat update manager
+            CombatUpdateManager.Register(this);
         }
 
-        private void Update()
+        private void OnDestroy()
+        {
+            // Unregister to prevent memory leaks
+            CombatUpdateManager.Unregister(this);
+        }
+
+        // Renamed from Update() to CombatUpdate() for centralized update management
+        public void CombatUpdate(float deltaTime)
         {
             UpdateMovement();
             CalculateCurrentMovementSpeed();

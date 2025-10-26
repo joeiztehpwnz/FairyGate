@@ -3,7 +3,7 @@ using UnityEngine.Events;
 
 namespace FairyGate.Combat
 {
-    public class KnockdownMeterTracker : MonoBehaviour
+    public class KnockdownMeterTracker : MonoBehaviour, ICombatUpdatable
     {
         [Header("Knockdown Meter")]
         [SerializeField] private float currentMeter = 0f;
@@ -36,15 +36,25 @@ namespace FairyGate.Combat
                 Debug.LogWarning($"KnockdownMeterTracker on {gameObject.name} has no CharacterStats assigned. Using default values.");
                 characterStats = CharacterStats.CreateDefaultStats();
             }
+
+            // Register with combat update manager
+            CombatUpdateManager.Register(this);
         }
 
-        private void Update()
+        private void OnDestroy()
+        {
+            // Unregister to prevent memory leaks
+            CombatUpdateManager.Unregister(this);
+        }
+
+        // Renamed from Update() to CombatUpdate() for centralized update management
+        public void CombatUpdate(float deltaTime)
         {
             // Continuous decay - never resets, only decays
             if (currentMeter > 0f)
             {
                 float oldMeter = currentMeter;
-                currentMeter = Mathf.Max(0f, currentMeter + (decayRate * Time.deltaTime));
+                currentMeter = Mathf.Max(0f, currentMeter + (decayRate * deltaTime));
 
                 if (!Mathf.Approximately(oldMeter, currentMeter))
                 {

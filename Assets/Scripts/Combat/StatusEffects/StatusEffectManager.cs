@@ -5,7 +5,7 @@ using UnityEngine.Events;
 
 namespace FairyGate.Combat
 {
-    public class StatusEffectManager : MonoBehaviour, IStatusEffectTarget
+    public class StatusEffectManager : MonoBehaviour, IStatusEffectTarget, ICombatUpdatable
     {
         [Header("Status Effects")]
         [SerializeField] private List<StatusEffect> activeStatusEffects = new List<StatusEffect>();
@@ -43,9 +43,19 @@ namespace FairyGate.Combat
                 Debug.LogWarning($"StatusEffectManager on {gameObject.name} has no CharacterStats assigned. Using default values.");
                 characterStats = CharacterStats.CreateDefaultStats();
             }
+
+            // Register with combat update manager
+            CombatUpdateManager.Register(this);
         }
 
-        private void Update()
+        private void OnDestroy()
+        {
+            // Unregister to prevent memory leaks
+            CombatUpdateManager.Unregister(this);
+        }
+
+        // Renamed from Update() to CombatUpdate() for centralized update management
+        public void CombatUpdate(float deltaTime)
         {
             UpdateStatusEffects();
         }

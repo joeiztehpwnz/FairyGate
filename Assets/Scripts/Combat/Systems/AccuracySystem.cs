@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace FairyGate.Combat
 {
-    public class AccuracySystem : MonoBehaviour
+    public class AccuracySystem : MonoBehaviour, ICombatUpdatable
     {
         [Header("Accuracy Configuration")]
         [SerializeField] private float stationaryBuildRate = 40f; // % per second
@@ -41,9 +41,19 @@ namespace FairyGate.Combat
                 Debug.LogWarning($"AccuracySystem on {gameObject.name} could not find CharacterStats");
                 characterStats = CharacterStats.CreateDefaultStats();
             }
+
+            // Register with combat update manager
+            CombatUpdateManager.Register(this);
         }
 
-        private void Update()
+        private void OnDestroy()
+        {
+            // Unregister to prevent memory leaks
+            CombatUpdateManager.Unregister(this);
+        }
+
+        // Renamed from Update() to CombatUpdate() for centralized update management
+        public void CombatUpdate(float deltaTime)
         {
             if (isAiming)
             {
