@@ -460,6 +460,9 @@ namespace FairyGate.Editor
                 SetComponentField(weaponController, "weaponData", weapon);
             }
 
+            // CRITICAL: Set AI movement mode (not player-controlled)
+            SetComponentField(movementController, "isPlayerControlled", false);
+
             Debug.Log($"[Stress Test] Spawned {name} at {position}");
         }
 
@@ -471,6 +474,22 @@ namespace FairyGate.Editor
             if (property != null)
             {
                 property.objectReferenceValue = value;
+                serializedObject.ApplyModifiedProperties();
+            }
+            else
+            {
+                Debug.LogWarning($"[Stress Test] Field '{fieldName}' not found on {component.GetType().Name}");
+            }
+        }
+
+        private void SetComponentField(Component component, string fieldName, bool value)
+        {
+            var serializedObject = new SerializedObject(component);
+            var property = serializedObject.FindProperty(fieldName);
+
+            if (property != null)
+            {
+                property.boolValue = value;
                 serializedObject.ApplyModifiedProperties();
             }
             else
