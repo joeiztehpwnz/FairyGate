@@ -331,7 +331,7 @@ namespace FairyGate.Combat.Editor
             }
 
             // Configure components using SerializedObject
-            SetSerializedProperty(combatController, "characterStats", stats);
+            SetSerializedProperty(combatController, "baseStats", stats);
             SetSerializedProperty(healthSystem, "characterStats", stats);
             SetSerializedProperty(staminaSystem, "characterStats", stats);
             SetSerializedProperty(skillSystem, "characterStats", stats);
