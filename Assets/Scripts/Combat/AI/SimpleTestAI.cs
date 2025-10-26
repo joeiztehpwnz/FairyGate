@@ -223,33 +223,10 @@ namespace FairyGate.Combat
                 return;
             }
 
-            // Check if we're in range for offensive skills
-            if (SpeedResolver.IsOffensiveSkill(selectedSkill))
-            {
-                if (!weaponController.IsInRange(player))
-                {
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"{gameObject.name} AI wanted to use {selectedSkill} but target is out of range");
-                    }
-                    return;
-                }
-            }
-
             // Use the skill - Attack executes immediately, others require charging
             if (selectedSkill == SkillType.Attack)
             {
-                // Check weapon range before executing Attack
-                if (!IsWeaponInRange())
-                {
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"{gameObject.name} AI cancelled Attack - target out of weapon range");
-                    }
-                    return;
-                }
-
-                // Attack executes immediately
+                // Attack executes immediately - movement positioning should have gotten us in range
                 skillSystem.ExecuteSkill(SkillType.Attack);
 
                 if (enableDebugLogs)
@@ -286,17 +263,7 @@ namespace FairyGate.Combat
             // Execute if still charged and conditions are met
             if (skillSystem.CurrentState == SkillExecutionState.Charged && skillSystem.CurrentSkill == skillType)
             {
-                // Check weapon range before executing (skip for ranged attacks and defensive skills)
-                if (!IsWeaponInRange() && skillType != SkillType.RangedAttack && SpeedResolver.IsOffensiveSkill(skillType))
-                {
-                    skillSystem.CancelSkill();
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"{gameObject.name} AI cancelled {skillType} - target out of weapon range");
-                    }
-                    yield break;
-                }
-
+                // Execute skill - positioning should have gotten us in range during charge
                 skillSystem.ExecuteSkill(skillType);
 
                 if (enableDebugLogs)

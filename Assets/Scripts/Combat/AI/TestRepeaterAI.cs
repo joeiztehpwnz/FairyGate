@@ -94,22 +94,11 @@ namespace FairyGate.Combat
             if (skillSystem.CurrentState == SkillExecutionState.Charged ||
                 skillSystem.CurrentState == SkillExecutionState.Aiming)
             {
-                // Check weapon range for offensive skills, ranged attack doesn't need weapon range check
-                if (IsWeaponInRange() || selectedSkill == SkillType.RangedAttack)
+                // Execute skill - chase during charge should have gotten us in range
+                skillSystem.ExecuteSkill(selectedSkill);
+                if (enablePatternLogs)
                 {
-                    skillSystem.ExecuteSkill(selectedSkill);
-                    if (enablePatternLogs)
-                    {
-                        Debug.Log($"[TestAI] {gameObject.name} executing {selectedSkill}");
-                    }
-                }
-                else
-                {
-                    skillSystem.CancelSkill();
-                    if (enablePatternLogs)
-                    {
-                        Debug.Log($"[TestAI] {gameObject.name} cancelled {selectedSkill} - target out of weapon range");
-                    }
+                    Debug.Log($"[TestAI] {gameObject.name} executing {selectedSkill}");
                 }
             }
 
@@ -191,18 +180,7 @@ namespace FairyGate.Combat
                 StopMovement();
             }
 
-            // Check weapon range (not just engagement range)
-            if (!IsWeaponInRange())
-            {
-                if (enablePatternLogs)
-                {
-                    Debug.Log($"[TestAI] {gameObject.name} cancelled Attack - target out of weapon range");
-                }
-                yield return StartCoroutine(WaitForPhaseComplete(0.5f));
-                yield break;
-            }
-
-            // Execute Attack immediately
+            // Execute Attack immediately - chase should have gotten us in range
             skillSystem.ExecuteSkill(SkillType.Attack);
             if (enablePatternLogs)
             {
