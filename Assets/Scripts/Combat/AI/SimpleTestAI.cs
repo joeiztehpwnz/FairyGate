@@ -105,6 +105,7 @@ namespace FairyGate.Combat
             // Use squared distance to avoid expensive sqrt operation
             float sqrDistanceToPlayer = (transform.position - player.position).sqrMagnitude;
             float sqrEngageDistance = engageDistance * engageDistance;
+            float sqrDisengageDistance = (engageDistance * 2f) * (engageDistance * 2f);
 
             // Simple movement AI
             UpdateMovement(sqrDistanceToPlayer);
@@ -120,7 +121,7 @@ namespace FairyGate.Combat
             }
 
             // Exit combat if player is too far
-            if (combatController.IsInCombat && distanceToPlayer > engageDistance * 2f)
+            if (combatController.IsInCombat && sqrDistanceToPlayer > sqrDisengageDistance)
             {
                 combatController.ExitCombat();
                 if (enableDebugLogs)
