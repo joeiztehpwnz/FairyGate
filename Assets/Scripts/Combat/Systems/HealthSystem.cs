@@ -1,5 +1,5 @@
+using System;
 using UnityEngine;
-using UnityEngine.Events;
 
 namespace FairyGate.Combat
 {
@@ -13,10 +13,10 @@ namespace FairyGate.Combat
         [SerializeField] private bool enableDebugLogs = true;
         [SerializeField] private bool showHealthGUI = true;
 
-        [Header("Events")]
-        public UnityEvent<int, Transform> OnDamageReceived = new UnityEvent<int, Transform>();
-        public UnityEvent<Transform> OnDied = new UnityEvent<Transform>();
-        public UnityEvent<int, int> OnHealthChanged = new UnityEvent<int, int>(); // current, max
+        // C# Events (replaces UnityEvents for performance)
+        public event Action<int, Transform> OnDamageReceived; // damage, attacker
+        public event Action<Transform> OnDied; // killer
+        public event Action<int, int> OnHealthChanged; // current, max
 
         private StaminaSystem staminaSystem;
         private StatusEffectManager statusEffectManager;
@@ -63,7 +63,7 @@ namespace FairyGate.Combat
 
         private void Start()
         {
-            OnHealthChanged.Invoke(currentHealth, MaxHealth);
+            OnHealthChanged?.Invoke(currentHealth, MaxHealth);
         }
 
         public void TakeDamage(int damage, Transform source)
@@ -81,8 +81,8 @@ namespace FairyGate.Combat
                 Debug.Log($"{gameObject.name} took {damage} damage from {(source ? source.name : "unknown")} ({currentHealth}/{MaxHealth})");
             }
 
-            OnDamageReceived.Invoke(damage, source);
-            OnHealthChanged.Invoke(currentHealth, MaxHealth);
+            OnDamageReceived?.Invoke(damage, source);
+            OnHealthChanged?.Invoke(currentHealth, MaxHealth);
 
             // Interrupt rest if taking damage
             if (staminaSystem != null)
@@ -120,8 +120,8 @@ namespace FairyGate.Combat
                 combatController.ExitCombat();
             }
 
-            OnDied.Invoke(transform);
-            OnHealthChanged.Invoke(currentHealth, MaxHealth);
+            OnDied?.Invoke(transform);
+            OnHealthChanged?.Invoke(currentHealth, MaxHealth);
 
             // Trigger game state changes (reset prompt, etc.)
             GameManager.Instance?.OnCharacterDied(this);
@@ -141,14 +141,14 @@ namespace FairyGate.Combat
                     Debug.Log($"{gameObject.name} healed for {currentHealth - oldHealth} ({currentHealth}/{MaxHealth})");
                 }
 
-                OnHealthChanged.Invoke(currentHealth, MaxHealth);
+                OnHealthChanged?.Invoke(currentHealth, MaxHealth);
             }
         }
 
         public void SetHealth(int health)
         {
             currentHealth = Mathf.Clamp(health, 0, MaxHealth);
-            OnHealthChanged.Invoke(currentHealth, MaxHealth);
+            OnHealthChanged?.Invoke(currentHealth, MaxHealth);
 
             if (currentHealth <= 0)
             {
@@ -179,7 +179,7 @@ namespace FairyGate.Combat
         public void ResetForTesting()
         {
             currentHealth = MaxHealth;
-            OnHealthChanged.Invoke(currentHealth, MaxHealth);
+            OnHealthChanged?.Invoke(currentHealth, MaxHealth);
 
             if (enableDebugLogs)
             {

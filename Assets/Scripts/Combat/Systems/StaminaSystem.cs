@@ -1,5 +1,5 @@
+using System;
 using UnityEngine;
-using UnityEngine.Events;
 
 namespace FairyGate.Combat
 {
@@ -18,12 +18,12 @@ namespace FairyGate.Combat
         private float graceTimer = 0f;
         private bool isInGracePeriod = false;
 
-        [Header("Events")]
-        public UnityEvent<int, int> OnStaminaChanged = new UnityEvent<int, int>();
-        public UnityEvent OnRestStarted = new UnityEvent();
-        public UnityEvent OnRestStopped = new UnityEvent();
-        public UnityEvent OnStaminaDepleted = new UnityEvent();
-        public UnityEvent<SkillType> OnSkillAutoCancel = new UnityEvent<SkillType>();
+        // C# Events (replaces UnityEvents for performance)
+        public event Action<int, int> OnStaminaChanged; // current, max
+        public event Action OnRestStarted;
+        public event Action OnRestStopped;
+        public event Action OnStaminaDepleted;
+        public event Action<SkillType> OnSkillAutoCancel;
 
         private CombatController combatController;
         private SkillSystem skillSystem;
@@ -99,11 +99,11 @@ namespace FairyGate.Combat
             {
                 currentStamina -= amount;
                 currentStamina = Mathf.Max(0, currentStamina);
-                OnStaminaChanged.Invoke(currentStamina, MaxStamina);
+                OnStaminaChanged?.Invoke(currentStamina, MaxStamina);
 
                 if (currentStamina == 0)
                 {
-                    OnStaminaDepleted.Invoke();
+                    OnStaminaDepleted?.Invoke();
                 }
 
                 return true;
@@ -119,7 +119,7 @@ namespace FairyGate.Combat
 
             if (currentStamina != oldStamina)
             {
-                OnStaminaChanged.Invoke(currentStamina, MaxStamina);
+                OnStaminaChanged?.Invoke(currentStamina, MaxStamina);
             }
         }
 
@@ -143,11 +143,11 @@ namespace FairyGate.Combat
 
             if (currentStamina != oldStamina)
             {
-                OnStaminaChanged.Invoke(currentStamina, MaxStamina);
+                OnStaminaChanged?.Invoke(currentStamina, MaxStamina);
 
                 if (currentStamina == 0)
                 {
-                    OnStaminaDepleted.Invoke();
+                    OnStaminaDepleted?.Invoke();
                 }
             }
         }
@@ -157,7 +157,7 @@ namespace FairyGate.Combat
             if (isResting) return;
 
             isResting = true;
-            OnRestStarted.Invoke();
+            OnRestStarted?.Invoke();
 
             // Rest automatically exits combat state
             if (combatController != null && combatController.IsInCombat)
@@ -171,7 +171,7 @@ namespace FairyGate.Combat
             if (!isResting) return;
 
             isResting = false;
-            OnRestStopped.Invoke();
+            OnRestStopped?.Invoke();
         }
 
         public void InterruptRest()
@@ -217,7 +217,7 @@ namespace FairyGate.Combat
                     {
                         // Grace period expired, auto-cancel skill
                         skillSystem.CancelSkill();
-                        OnSkillAutoCancel.Invoke(currentSkill);
+                        OnSkillAutoCancel?.Invoke(currentSkill);
                         Debug.Log($"{gameObject.name} auto-cancelled {currentSkill} due to stamina depletion");
                     }
                 }

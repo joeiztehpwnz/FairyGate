@@ -1,7 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.Events;
 
 namespace FairyGate.Combat
 {
@@ -22,10 +22,10 @@ namespace FairyGate.Combat
         [SerializeField] private bool enableDebugLogs = true;
         [SerializeField] private bool showCombatGUI = true;
 
-        [Header("Events")]
-        public UnityEvent OnCombatEntered = new UnityEvent();
-        public UnityEvent OnCombatExited = new UnityEvent();
-        public UnityEvent<Transform> OnTargetChanged = new UnityEvent<Transform>();
+        // C# Events (replaces UnityEvents for performance)
+        public event Action OnCombatEntered;
+        public event Action OnCombatExited;
+        public event Action<Transform> OnTargetChanged;
 
         // Component references
         private HealthSystem healthSystem;
@@ -172,14 +172,14 @@ namespace FairyGate.Combat
                 case CombatState.Combat:
                     if (oldState == CombatState.Idle)
                     {
-                        OnCombatEntered.Invoke();
+                        OnCombatEntered?.Invoke();
                     }
                     break;
 
                 case CombatState.Idle:
                     if (IsInCombatState(oldState))
                     {
-                        OnCombatExited.Invoke();
+                        OnCombatExited?.Invoke();
                     }
                     break;
             }
@@ -224,7 +224,7 @@ namespace FairyGate.Combat
             }
 
             currentTarget = null;
-            OnTargetChanged.Invoke(null);
+            OnTargetChanged?.Invoke(null);
 
             // Force immediate combat state update instead of waiting for next Update()
             UpdateCombatState();
@@ -238,7 +238,7 @@ namespace FairyGate.Combat
         public void SetTarget(Transform target)
         {
             currentTarget = target;
-            OnTargetChanged.Invoke(target);
+            OnTargetChanged?.Invoke(target);
 
             if (enableDebugLogs && target != null)
             {

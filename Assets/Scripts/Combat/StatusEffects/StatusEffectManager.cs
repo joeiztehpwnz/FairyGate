@@ -1,7 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.Events;
 
 namespace FairyGate.Combat
 {
@@ -15,10 +15,10 @@ namespace FairyGate.Combat
         [SerializeField] private bool enableDebugLogs = true;
         [SerializeField] private bool showStatusEffectGUI = true;
 
-        [Header("Events")]
-        public UnityEvent<StatusEffect> OnStatusEffectApplied = new UnityEvent<StatusEffect>();
-        public UnityEvent<StatusEffectType> OnStatusEffectRemoved = new UnityEvent<StatusEffectType>();
-        public UnityEvent<StatusEffectType> OnStatusEffectExpired = new UnityEvent<StatusEffectType>();
+        // C# Events (replaces UnityEvents for performance)
+        public event Action<StatusEffect> OnStatusEffectApplied;
+        public event Action<StatusEffectType> OnStatusEffectRemoved;
+        public event Action<StatusEffectType> OnStatusEffectExpired;
 
         private MovementController movementController;
         private SkillSystem skillSystem;
@@ -97,7 +97,7 @@ namespace FairyGate.Combat
                 }
             }
 
-            OnStatusEffectApplied.Invoke(effect);
+            OnStatusEffectApplied?.Invoke(effect);
             UpdateMovementRestrictions();
 
             // Apply physical displacement if this effect has it
@@ -113,7 +113,7 @@ namespace FairyGate.Combat
             if (effect != null)
             {
                 effect.isActive = false;
-                OnStatusEffectRemoved.Invoke(type);
+                OnStatusEffectRemoved?.Invoke(type);
                 UpdateMovementRestrictions();
 
                 if (enableDebugLogs)
@@ -153,7 +153,7 @@ namespace FairyGate.Combat
 
                     if (!effect.isActive) // Effect expired
                     {
-                        OnStatusEffectExpired.Invoke(effect.type);
+                        OnStatusEffectExpired?.Invoke(effect.type);
                         OnStatusEffectRemoved.Invoke(effect.type);
 
                         if (enableDebugLogs)

@@ -1,5 +1,5 @@
+using System;
 using UnityEngine;
-using UnityEngine.Events;
 
 namespace FairyGate.Combat
 {
@@ -16,9 +16,9 @@ namespace FairyGate.Combat
         [Header("Debug")]
         [SerializeField] private bool enableDebugLogs = true;
 
-        [Header("Events")]
-        public UnityEvent<EquipmentData, EquipmentSlot> OnEquipmentChanged = new UnityEvent<EquipmentData, EquipmentSlot>();
-        public UnityEvent OnEquipmentRefreshed = new UnityEvent();
+        // C# Events (replaces UnityEvents for performance)
+        public event Action<EquipmentData, EquipmentSlot> OnEquipmentChanged;
+        public event Action OnEquipmentRefreshed;
 
         private CharacterStats baseStats;
         private CharacterStats modifiedStats;
@@ -87,7 +87,7 @@ namespace FairyGate.Combat
             }
 
             RefreshEquipmentBonuses();
-            OnEquipmentChanged.Invoke(equipment, equipment.slot);
+            OnEquipmentChanged?.Invoke(equipment, equipment.slot);
 
             if (enableDebugLogs)
             {
@@ -145,7 +145,7 @@ namespace FairyGate.Combat
                 ApplyEquipmentBonuses(currentAccessory);
             }
 
-            OnEquipmentRefreshed.Invoke();
+            OnEquipmentRefreshed?.Invoke();
 
             if (enableDebugLogs)
             {

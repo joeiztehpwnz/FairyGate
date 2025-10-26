@@ -1,5 +1,5 @@
+using System;
 using UnityEngine;
-using UnityEngine.Events;
 
 namespace FairyGate.Combat
 {
@@ -16,9 +16,9 @@ namespace FairyGate.Combat
 
         private Transform lastAttacker;
 
-        [Header("Events")]
-        public UnityEvent<float, float> OnMeterChanged = new UnityEvent<float, float>(); // current, max
-        public UnityEvent OnMeterKnockdownTriggered = new UnityEvent();
+        // C# Events (replaces UnityEvents for performance)
+        public event Action<float, float> OnMeterChanged; // current, max
+        public event Action OnMeterKnockdownTriggered;
 
         private StatusEffectManager statusEffectManager;
 
@@ -58,7 +58,7 @@ namespace FairyGate.Combat
 
                 if (!Mathf.Approximately(oldMeter, currentMeter))
                 {
-                    OnMeterChanged.Invoke(currentMeter, maxMeter);
+                    OnMeterChanged?.Invoke(currentMeter, maxMeter);
                 }
             }
         }
@@ -94,7 +94,7 @@ namespace FairyGate.Combat
             float oldMeter = currentMeter;
             currentMeter = Mathf.Min(maxMeter, currentMeter + amount);
 
-            OnMeterChanged.Invoke(currentMeter, maxMeter);
+            OnMeterChanged?.Invoke(currentMeter, maxMeter);
 
             // Check for knockdown threshold
             if (currentMeter >= maxMeter && oldMeter < maxMeter)
@@ -130,7 +130,7 @@ namespace FairyGate.Combat
                 statusEffectManager.ApplyMeterKnockdown(displacement);
             }
 
-            OnMeterKnockdownTriggered.Invoke();
+            OnMeterKnockdownTriggered?.Invoke();
 
             // IMPORTANT: Meter continues normal decay, does NOT reset to 0
             // This is explicitly stated in the specifications
@@ -143,7 +143,7 @@ namespace FairyGate.Combat
 
             if (!Mathf.Approximately(oldMeter, currentMeter))
             {
-                OnMeterChanged.Invoke(currentMeter, maxMeter);
+                OnMeterChanged?.Invoke(currentMeter, maxMeter);
 
                 // Check for threshold crossing
                 if (currentMeter >= maxMeter && oldMeter < maxMeter)
@@ -158,7 +158,7 @@ namespace FairyGate.Combat
             // Only for testing/debugging purposes
             // Normal gameplay should NEVER reset the meter
             currentMeter = 0f;
-            OnMeterChanged.Invoke(currentMeter, maxMeter);
+            OnMeterChanged?.Invoke(currentMeter, maxMeter);
 
             if (enableDebugLogs)
             {

@@ -1,6 +1,6 @@
+using System;
 using System.Collections;
 using UnityEngine;
-using UnityEngine.Events;
 
 namespace FairyGate.Combat
 {
@@ -26,10 +26,10 @@ namespace FairyGate.Combat
         [SerializeField] private bool enableDebugLogs = true;
         [SerializeField] private bool showSkillGUI = true;
 
-        [Header("Events")]
-        public UnityEvent<SkillType> OnSkillCharged = new UnityEvent<SkillType>();
-        public UnityEvent<SkillType, bool> OnSkillExecuted = new UnityEvent<SkillType, bool>();
-        public UnityEvent<SkillType> OnSkillCancelled = new UnityEvent<SkillType>();
+        // C# Events (replaces UnityEvents for performance)
+        public event Action<SkillType> OnSkillCharged;
+        public event Action<SkillType, bool> OnSkillExecuted; // skill, wasHit
+        public event Action<SkillType> OnSkillCancelled;
 
         // Component references
         private WeaponController weaponController;
@@ -288,7 +288,7 @@ namespace FairyGate.Combat
             // Reset movement restrictions
             movementController.SetMovementModifier(1f);
 
-            OnSkillCancelled.Invoke(skilltToCancel);
+            OnSkillCancelled?.Invoke(skilltToCancel);
         }
 
         private void StartAiming(SkillType skillType)
@@ -396,7 +396,7 @@ namespace FairyGate.Combat
                 Debug.Log($"{gameObject.name} {skillType} fully charged and ready to execute");
             }
 
-            OnSkillCharged.Invoke(skillType);
+            OnSkillCharged?.Invoke(skillType);
 
             // Auto-execute defensive skills after charging
             if (IsDefensiveSkill(skillType))
@@ -462,7 +462,7 @@ namespace FairyGate.Combat
             // Reset movement restrictions
             movementController.SetMovementModifier(1f);
 
-            OnSkillExecuted.Invoke(skillType, skillSuccessful);
+            OnSkillExecuted?.Invoke(skillType, skillSuccessful);
 
             if (enableDebugLogs)
             {
@@ -573,7 +573,7 @@ namespace FairyGate.Combat
             chargeProgress = 0f;
             movementController.SetMovementModifier(1f);
 
-            OnSkillExecuted.Invoke(SkillType.RangedAttack, isHit);
+            OnSkillExecuted?.Invoke(SkillType.RangedAttack, isHit);
 
             if (enableDebugLogs)
             {
