@@ -152,6 +152,45 @@ namespace FairyGate.Combat
                 yield break;
             }
 
+            // Move to get within weapon range if movement enabled
+            if (enableMovement)
+            {
+                float maxChaseTime = 2.0f; // Don't chase forever
+                float chaseElapsed = 0f;
+
+                while (!IsWeaponInRange() && chaseElapsed < maxChaseTime)
+                {
+                    // Pause if stunned/knocked down during chase
+                    if (!statusEffectManager.CanAct)
+                    {
+                        StopMovement();
+                        yield return new WaitUntil(() => statusEffectManager.CanAct);
+                    }
+
+                    if (player != null && weaponController != null)
+                    {
+                        // Use squared distance to avoid expensive sqrt operation
+                        float sqrDistance = (transform.position - player.position).sqrMagnitude;
+                        float weaponRange = weaponController.WeaponData.range;
+                        float sqrWeaponRange = weaponRange * weaponRange;
+
+                        if (sqrDistance > sqrWeaponRange)
+                        {
+                            MoveTowardsPlayer(); // Chase to get in range
+                        }
+                        else
+                        {
+                            break; // In range now!
+                        }
+                    }
+
+                    chaseElapsed += Time.deltaTime;
+                    yield return null;
+                }
+
+                StopMovement();
+            }
+
             // Check weapon range (not just engagement range)
             if (!IsWeaponInRange())
             {
