@@ -67,19 +67,19 @@ namespace FairyGate.Combat
 
         public void ApplyStatusEffect(StatusEffect effect)
         {
-            if (effect == null) return;
-
             // Handle status effect stacking rules
             ProcessStatusEffectStacking(effect);
 
             // Apply the effect
-            var existingEffect = activeStatusEffects.FirstOrDefault(e => e.type == effect.type);
-            if (existingEffect != null)
+            int existingIndex = activeStatusEffects.FindIndex(e => e.type == effect.type);
+            if (existingIndex >= 0)
             {
-                // Reset duration for existing effect (don't extend)
+                // Reset duration for existing effect (don't extend) - struct mutation
+                var existingEffect = activeStatusEffects[existingIndex];
                 existingEffect.remainingTime = effect.duration;
                 existingEffect.duration = effect.duration;
                 existingEffect.isActive = true;
+                activeStatusEffects[existingIndex] = existingEffect; // Write back
 
                 if (enableDebugLogs)
                 {
@@ -109,10 +109,13 @@ namespace FairyGate.Combat
 
         public void RemoveStatusEffect(StatusEffectType type)
         {
-            var effect = activeStatusEffects.FirstOrDefault(e => e.type == type);
-            if (effect != null)
+            int index = activeStatusEffects.FindIndex(e => e.type == type);
+            if (index >= 0)
             {
+                var effect = activeStatusEffects[index];
                 effect.isActive = false;
+                activeStatusEffects[index] = effect; // Write back struct
+
                 OnStatusEffectRemoved?.Invoke(type);
                 UpdateMovementRestrictions();
 
@@ -244,17 +247,19 @@ namespace FairyGate.Combat
 
         public float GetRemainingDuration(StatusEffectType type)
         {
-            var effect = activeStatusEffects.FirstOrDefault(e => e.type == type && e.isActive);
-            return effect?.remainingTime ?? 0f;
+            int index = activeStatusEffects.FindIndex(e => e.type == type && e.isActive);
+            return index >= 0 ? activeStatusEffects[index].remainingTime : 0f;
         }
 
         public void ExtendStatusEffect(StatusEffectType type, float additionalTime)
         {
-            var effect = activeStatusEffects.FirstOrDefault(e => e.type == type && e.isActive);
-            if (effect != null)
+            int index = activeStatusEffects.FindIndex(e => e.type == type && e.isActive);
+            if (index >= 0)
             {
+                var effect = activeStatusEffects[index];
                 effect.remainingTime += additionalTime;
                 effect.duration += additionalTime;
+                activeStatusEffects[index] = effect; // Write back struct
 
                 if (enableDebugLogs)
                 {
