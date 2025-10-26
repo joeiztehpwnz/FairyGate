@@ -40,7 +40,13 @@ namespace FairyGate.Combat
 
         public static void Register(ICombatUpdatable updatable)
         {
-            if (instance != null && !instance.updatables.Contains(updatable))
+            if (instance == null)
+            {
+                Debug.LogWarning($"[CombatUpdateManager] Cannot register {updatable.GetType().Name} - Instance is null! Make sure CombatUpdateManager exists in scene.");
+                return;
+            }
+
+            if (!instance.updatables.Contains(updatable))
             {
                 instance.updatables.Add(updatable);
 
