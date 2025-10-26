@@ -187,6 +187,13 @@ namespace FairyGate.Combat
             movementController.SetMovementInput(moveInput);
         }
 
+        private bool IsWeaponInRange()
+        {
+            if (player == null || weaponController == null) return false;
+            // Delegates to optimized WeaponController.IsInRange() which uses squared distance
+            return weaponController.IsInRange(player);
+        }
+
         private void TryUseSkill()
         {
             // Only use skills if not currently executing one
