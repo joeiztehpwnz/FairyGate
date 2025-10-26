@@ -17,7 +17,7 @@ namespace FairyGate.Combat
     }
 
     [System.Serializable]
-    public class StatusEffect
+    public struct StatusEffect // Changed to struct for Phase 3.1 memory optimization
     {
         public StatusEffectType type;
         public float duration;

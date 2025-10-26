@@ -146,10 +146,12 @@ namespace FairyGate.Combat
         {
             for (int i = activeStatusEffects.Count - 1; i >= 0; i--)
             {
+                // Get struct by value, update it, then write it back (Phase 3.1)
                 var effect = activeStatusEffects[i];
                 if (effect.isActive)
                 {
                     effect.UpdateEffect(Time.deltaTime);
+                    activeStatusEffects[i] = effect; // Write back modified struct
 
                     if (!effect.isActive) // Effect expired
                     {
