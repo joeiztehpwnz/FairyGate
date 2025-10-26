@@ -30,6 +30,9 @@ namespace FairyGate.Combat
         // State tracking
         private float timeUntilNextAction = 0f;
 
+        // Cached component reference (Phase 2.3 optimization)
+        private StaminaSystem cachedStaminaSystem;
+
         protected override string GetPatternName() => $"Test: {selectedSkill}";
 
         protected override IEnumerator ExecutePattern()
@@ -446,11 +449,16 @@ namespace FairyGate.Combat
 
             if (infiniteStamina && Application.isPlaying)
             {
-                var staminaSystem = GetComponent<StaminaSystem>();
-                if (staminaSystem != null && staminaSystem.CurrentStamina < staminaSystem.MaxStamina * 0.9f)
+                // Cache component on first use (Phase 2.3 optimization)
+                if (cachedStaminaSystem == null)
+                {
+                    cachedStaminaSystem = GetComponent<StaminaSystem>();
+                }
+
+                if (cachedStaminaSystem != null && cachedStaminaSystem.CurrentStamina < cachedStaminaSystem.MaxStamina * 0.9f)
                 {
                     // Refill stamina when it drops below 90%
-                    staminaSystem.SetStamina(staminaSystem.MaxStamina);
+                    cachedStaminaSystem.SetStamina(cachedStaminaSystem.MaxStamina);
                 }
             }
 

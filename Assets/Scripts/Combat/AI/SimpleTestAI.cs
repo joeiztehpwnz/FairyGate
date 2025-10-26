@@ -29,6 +29,7 @@ namespace FairyGate.Combat
         private WeaponController weaponController;
         private MovementController movementController;
         private StatusEffectManager statusEffectManager;
+        private StaminaSystem staminaSystem; // Phase 2.3 optimization
 
         private void Awake()
         {
@@ -37,6 +38,7 @@ namespace FairyGate.Combat
             weaponController = GetComponent<WeaponController>();
             movementController = GetComponent<MovementController>();
             statusEffectManager = GetComponent<StatusEffectManager>();
+            staminaSystem = GetComponent<StaminaSystem>(); // Phase 2.3 optimization
 
             nextSkillTime = Time.time + skillCooldown + Random.Range(-randomVariance, randomVariance);
         }
@@ -203,7 +205,6 @@ namespace FairyGate.Combat
             }
 
             // Check if we have enough stamina for any skill
-            var staminaSystem = GetComponent<StaminaSystem>();
             if (staminaSystem.CurrentStamina < 2) // Minimum stamina for any skill
             {
                 // Start resting if very low on stamina

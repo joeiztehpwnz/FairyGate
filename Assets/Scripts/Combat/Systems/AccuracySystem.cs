@@ -24,6 +24,10 @@ namespace FairyGate.Combat
         private CombatController combatController;
         private MovementController movementController;
 
+        // Cached target component (Phase 2.3 optimization)
+        private MovementController cachedTargetMovement;
+        private Transform lastCachedTarget;
+
         // Properties
         public float CurrentAccuracy => currentAccuracy;
         public bool IsAiming => isAiming;
@@ -74,6 +78,10 @@ namespace FairyGate.Combat
             currentTarget = target;
             currentAccuracy = 1f;
 
+            // Cache target's MovementController (Phase 2.3 optimization)
+            cachedTargetMovement = target.GetComponent<MovementController>();
+            lastCachedTarget = target;
+
             if (enableDebugLogs)
                 Debug.Log($"{gameObject.name} started aiming at {target.name}");
         }
@@ -83,6 +91,10 @@ namespace FairyGate.Combat
             isAiming = false;
             currentTarget = null;
             currentAccuracy = 1f;
+
+            // Clear cached target component
+            cachedTargetMovement = null;
+            lastCachedTarget = null;
 
             if (enableDebugLogs)
                 Debug.Log($"{gameObject.name} stopped aiming");
@@ -119,10 +131,17 @@ namespace FairyGate.Combat
         {
             if (currentTarget == null) return false;
 
-            var targetMovement = currentTarget.GetComponent<MovementController>();
-            if (targetMovement == null) return false;
+            // Use cached MovementController (Phase 2.3 optimization)
+            // Re-cache if target changed
+            if (lastCachedTarget != currentTarget)
+            {
+                cachedTargetMovement = currentTarget.GetComponent<MovementController>();
+                lastCachedTarget = currentTarget;
+            }
 
-            return targetMovement.IsMoving();
+            if (cachedTargetMovement == null) return false;
+
+            return cachedTargetMovement.IsMoving();
         }
 
         private float CalculateFocusMultiplier()
