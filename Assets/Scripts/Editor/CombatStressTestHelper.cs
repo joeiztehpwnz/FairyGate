@@ -171,7 +171,18 @@ namespace FairyGate.Editor
 
             if (Application.isPlaying)
             {
-                int enemyCount = GameObject.FindGameObjectsWithTag("Enemy")?.Length ?? 0;
+                int enemyCount = 0;
+                try
+                {
+                    enemyCount = GameObject.FindGameObjectsWithTag("Enemy")?.Length ?? 0;
+                }
+                catch (UnityException)
+                {
+                    // Enemy tag doesn't exist, count by AI components
+                    enemyCount = FindObjectsOfType<SimpleTestAI>().Length +
+                                FindObjectsOfType<KnightAI>().Length +
+                                FindObjectsOfType<TestRepeaterAI>().Length;
+                }
                 EditorGUILayout.LabelField($"Active Enemies: {enemyCount}");
 
                 var combatManager = FindObjectOfType<CombatInteractionManager>();
@@ -198,16 +209,35 @@ namespace FairyGate.Editor
         {
             if (!Application.isPlaying) return;
 
-            var player = GameObject.FindWithTag("Player");
-            if (player != null)
+            // Try to find by tag first
+            try
             {
-                playerTransform = player.transform;
-                Debug.Log($"[Stress Test] Found player: {player.name}");
+                var player = GameObject.FindWithTag("Player");
+                if (player != null)
+                {
+                    playerTransform = player.transform;
+                    Debug.Log($"[Stress Test] Found player by tag: {player.name}");
+                    return;
+                }
             }
-            else
+            catch (UnityException)
             {
-                Debug.LogWarning("[Stress Test] No player found with 'Player' tag");
+                // Player tag doesn't exist, try component search
             }
+
+            // Fallback: Search for object with CombatController that has "Player" in name
+            var allCombatants = FindObjectsOfType<CombatController>();
+            foreach (var combatant in allCombatants)
+            {
+                if (combatant.name.Contains("Player"))
+                {
+                    playerTransform = combatant.transform;
+                    Debug.Log($"[Stress Test] Found player by component search: {combatant.name}");
+                    return;
+                }
+            }
+
+            Debug.LogWarning("[Stress Test] No player found. Please assign Player Transform manually or ensure a GameObject with 'Player' in its name has a CombatController component.");
         }
 
         private void ClearAllTestEnemies()
@@ -218,12 +248,32 @@ namespace FairyGate.Editor
                 return;
             }
 
-            var enemies = GameObject.FindGameObjectsWithTag("Enemy");
-            int count = enemies.Length;
+            int count = 0;
 
-            foreach (var enemy in enemies)
+            // Try to find enemies by tag
+            try
             {
-                DestroyImmediate(enemy);
+                var enemies = GameObject.FindGameObjectsWithTag("Enemy");
+                count = enemies.Length;
+
+                foreach (var enemy in enemies)
+                {
+                    DestroyImmediate(enemy);
+                }
+            }
+            catch (UnityException)
+            {
+                // Enemy tag doesn't exist, search by name pattern
+                var allObjects = FindObjectsOfType<GameObject>();
+                foreach (var obj in allObjects)
+                {
+                    if (obj.name.StartsWith("TestEnemy_") || obj.name.StartsWith("BoundaryTest_") ||
+                        obj.name.StartsWith("Circle_") || obj.name.StartsWith("Line_") || obj.name.StartsWith("CloseQuarters_"))
+                    {
+                        DestroyImmediate(obj);
+                        count++;
+                    }
+                }
             }
 
             Debug.Log($"[Stress Test] Cleared {count} test enemies");
@@ -338,7 +388,17 @@ namespace FairyGate.Editor
             // Create enemy GameObject
             GameObject enemy = new GameObject(name);
             enemy.transform.position = position;
-            enemy.tag = "Enemy";
+
+            // Try to set Enemy tag, but don't fail if it doesn't exist
+            try
+            {
+                enemy.tag = "Enemy";
+            }
+            catch (UnityException)
+            {
+                // Enemy tag doesn't exist - that's okay, we'll use component search instead
+                Debug.LogWarning("[Stress Test] Enemy tag doesn't exist. Consider adding it via Edit → Project Settings → Tags and Layers for easier tracking.");
+            }
 
             // Add required components based on the scene setup pattern
             var combatController = enemy.AddComponent<CombatController>();
