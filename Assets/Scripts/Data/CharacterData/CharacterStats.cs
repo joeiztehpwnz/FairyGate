@@ -72,5 +72,71 @@ namespace FairyGate.Combat
             stats.vitality = 10;
             return stats;
         }
+
+        // Enemy Archetype Presets - Experimental Content
+        public static CharacterStats CreateBerserkerStats()
+        {
+            var stats = CreateInstance<CharacterStats>();
+            stats.strength = 15;          // High damage
+            stats.dexterity = 10;         // Medium speed
+            stats.intelligence = 8;
+            stats.focus = 8;              // Low stamina
+            stats.physicalDefense = 5;    // Glass cannon
+            stats.magicalDefense = 5;
+            stats.vitality = 6;           // Low HP
+            return stats;
+        }
+
+        public static CharacterStats CreateGuardianStats()
+        {
+            var stats = CreateInstance<CharacterStats>();
+            stats.strength = 7;           // Low damage
+            stats.dexterity = 6;          // Slow
+            stats.intelligence = 10;
+            stats.focus = 12;             // Good stamina for defense
+            stats.physicalDefense = 15;   // High defense
+            stats.magicalDefense = 12;
+            stats.vitality = 15;          // High HP
+            return stats;
+        }
+
+        public static CharacterStats CreateAssassinStats()
+        {
+            var stats = CreateInstance<CharacterStats>();
+            stats.strength = 10;          // Medium damage
+            stats.dexterity = 16;         // Very fast
+            stats.intelligence = 10;
+            stats.focus = 14;             // High stamina for mobility
+            stats.physicalDefense = 7;    // Low defense
+            stats.magicalDefense = 8;
+            stats.vitality = 8;           // Low-medium HP
+            return stats;
+        }
+
+        public static CharacterStats CreateSoldierStats()
+        {
+            var stats = CreateInstance<CharacterStats>();
+            stats.strength = 10;          // Balanced
+            stats.dexterity = 10;
+            stats.intelligence = 10;
+            stats.focus = 10;
+            stats.physicalDefense = 10;
+            stats.magicalDefense = 10;
+            stats.vitality = 10;
+            return stats;
+        }
+
+        public static CharacterStats CreateArcherStats()
+        {
+            var stats = CreateInstance<CharacterStats>();
+            stats.strength = 8;           // Low melee damage
+            stats.dexterity = 14;         // Fast for kiting
+            stats.intelligence = 10;
+            stats.focus = 15;             // High accuracy/stamina
+            stats.physicalDefense = 6;    // Fragile
+            stats.magicalDefense = 8;
+            stats.vitality = 7;           // Low HP
+            return stats;
+        }
     }
 }
