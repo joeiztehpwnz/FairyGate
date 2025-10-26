@@ -334,8 +334,10 @@ namespace FairyGate.Combat.Editor
             SetSerializedProperty(combatController, "baseStats", stats);
             SetSerializedProperty(healthSystem, "characterStats", stats);
             SetSerializedProperty(staminaSystem, "characterStats", stats);
+            SetSerializedProperty(statusEffectManager, "characterStats", stats);
             SetSerializedProperty(skillSystem, "characterStats", stats);
             SetSerializedProperty(movementController, "characterStats", stats);
+            SetSerializedProperty(knockdownMeter, "characterStats", stats);
             SetSerializedProperty(weaponController, "weaponData", weapon);
             SetSerializedProperty(accuracySystem, "characterStats", stats);
 
