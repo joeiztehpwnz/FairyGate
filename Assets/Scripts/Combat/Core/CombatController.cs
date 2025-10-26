@@ -36,6 +36,9 @@ namespace FairyGate.Combat
         private MovementController movementController;
         private EquipmentManager equipmentManager;
 
+        // Cached list for target finding (Phase 3.4 optimization)
+        private List<Transform> cachedTargetsList = new List<Transform>();
+
         // ICombatant Properties
         public CharacterStats BaseStats => baseStats;
         public CharacterStats Stats => equipmentManager != null ? equipmentManager.ModifiedStats : baseStats;
@@ -281,7 +284,7 @@ namespace FairyGate.Combat
         private Transform[] FindPotentialTargets()
         {
             var colliders = Physics.OverlapSphere(transform.position, 10f, enemyLayerMask);
-            var targets = new List<Transform>();
+            cachedTargetsList.Clear(); // Phase 3.4: Reuse cached list
 
             foreach (var collider in colliders)
             {
@@ -290,12 +293,12 @@ namespace FairyGate.Combat
                     var targetHealth = collider.GetComponent<HealthSystem>();
                     if (targetHealth != null && targetHealth.IsAlive)
                     {
-                        targets.Add(collider.transform);
+                        cachedTargetsList.Add(collider.transform);
                     }
                 }
             }
 
-            return targets.OrderBy(t => Vector3.Distance(transform.position, t.position)).ToArray();
+            return cachedTargetsList.OrderBy(t => Vector3.Distance(transform.position, t.position)).ToArray();
         }
 
         private void ToggleRest()
