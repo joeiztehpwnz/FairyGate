@@ -236,31 +236,13 @@ namespace FairyGate.Combat
             // Get character stats and weapon data
             var attackerStats = offensiveSkill.combatant.Stats;
             var defenderStats = defensiveSkill.combatant.Stats;
-            var attackerWeaponController = offensiveSkill.combatant.GetComponent<WeaponController>();
-            var attackerWeapon = attackerWeaponController?.WeaponData;
+            var attackerWeapon = offensiveSkill.combatant.GetComponent<WeaponController>()?.WeaponData;
             var defenderWeapon = defensiveSkill.combatant.GetComponent<WeaponController>()?.WeaponData;
 
             if (attackerStats == null || defenderStats == null || attackerWeapon == null || defenderWeapon == null)
             {
                 Debug.LogError("Missing required components for skill interaction");
                 return;
-            }
-
-            // RANGE CHECK: Verify defender is still in weapon range at execution time
-            // Skip for ranged attacks (they use accuracy system instead)
-            if (offensiveSkill.skillType != SkillType.RangedAttack)
-            {
-                if (attackerWeaponController != null && !attackerWeaponController.CheckRangeForSkill(defensiveSkill.combatant.transform, offensiveSkill.skillType))
-                {
-                    if (enableDebugLogs)
-                    {
-                        float distance = Vector3.Distance(offensiveSkill.combatant.transform.position, defensiveSkill.combatant.transform.position);
-                        Debug.Log($"{offensiveSkill.combatant.name} {offensiveSkill.skillType} MISSED interaction - defender out of range ({distance:F2}m > {attackerWeapon.range:F2}m)");
-                    }
-                    // Complete defensive skill anyway (they tried to defend but attacker wasn't in range)
-                    CompleteDefensiveSkillExecution(defensiveSkill);
-                    return;
-                }
             }
 
             // Process damage and effects based on interaction
@@ -483,28 +465,12 @@ namespace FairyGate.Combat
 
             var attackerStats = execution.combatant.Stats;
             var targetStats = targetHealth.GetComponent<CombatController>()?.Stats;
-            var attackerWeaponController = execution.combatant.GetComponent<WeaponController>();
-            var attackerWeapon = attackerWeaponController?.WeaponData;
+            var attackerWeapon = execution.combatant.GetComponent<WeaponController>()?.WeaponData;
 
             Debug.Assert(attackerStats != null, $"CharacterStats is null on {execution.combatant.gameObject.name}");
             Debug.Assert(targetStats != null, $"CharacterStats is null on {target.gameObject.name}");
             Debug.Assert(attackerWeapon != null, $"WeaponData is null on {execution.combatant.gameObject.name}");
             if (attackerStats == null || targetStats == null || attackerWeapon == null) return; // Fallback for production builds
-
-            // RANGE CHECK: Verify target is still in weapon range at execution time
-            // Skip for ranged attacks (they use accuracy system instead)
-            if (execution.skillType != SkillType.RangedAttack)
-            {
-                if (attackerWeaponController != null && !attackerWeaponController.CheckRangeForSkill(target, execution.skillType))
-                {
-                    if (enableDebugLogs)
-                    {
-                        float distance = Vector3.Distance(execution.combatant.transform.position, target.position);
-                        Debug.Log($"{execution.combatant.name} {execution.skillType} MISSED - target out of range ({distance:F2}m > {attackerWeapon.range:F2}m)");
-                    }
-                    return; // Target moved out of range - attack misses
-                }
-            }
 
             // SPECIAL HANDLING FOR RANGED ATTACK: Check if it hit
             if (execution.skillType == SkillType.RangedAttack)
