@@ -3,7 +3,7 @@ using UnityEngine.Events;
 
 namespace FairyGate.Combat
 {
-    public class StaminaSystem : MonoBehaviour
+    public class StaminaSystem : MonoBehaviour, ICombatUpdatable
     {
         [Header("Stamina Configuration")]
         [SerializeField] private CharacterStats characterStats;
@@ -65,13 +65,23 @@ namespace FairyGate.Combat
 
             currentStamina = MaxStamina;
             staminaAccumulator = currentStamina;
+
+            // Register with combat update manager
+            CombatUpdateManager.Register(this);
         }
 
-        private void Update()
+        private void OnDestroy()
+        {
+            // Unregister to prevent memory leaks
+            CombatUpdateManager.Unregister(this);
+        }
+
+        // Renamed from Update() to CombatUpdate() for centralized update management
+        public void CombatUpdate(float deltaTime)
         {
             if (isResting)
             {
-                RegenerateStamina(CombatConstants.REST_STAMINA_REGENERATION_RATE * Time.deltaTime);
+                RegenerateStamina(CombatConstants.REST_STAMINA_REGENERATION_RATE * deltaTime);
             }
 
             HandleGracePeriod();

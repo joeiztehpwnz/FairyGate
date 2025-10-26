@@ -5,7 +5,7 @@ using UnityEngine.Events;
 
 namespace FairyGate.Combat
 {
-    public class CombatController : MonoBehaviour, ICombatant
+    public class CombatController : MonoBehaviour, ICombatant, ICombatUpdatable
     {
         [Header("Combat Configuration")]
         [SerializeField] private CharacterStats baseStats;
@@ -76,9 +76,19 @@ namespace FairyGate.Combat
 
             // Validate required components
             ValidateComponents();
+
+            // Register with combat update manager
+            CombatUpdateManager.Register(this);
         }
 
-        private void Update()
+        private void OnDestroy()
+        {
+            // Unregister to prevent memory leaks
+            CombatUpdateManager.Unregister(this);
+        }
+
+        // Renamed from Update() to CombatUpdate() for centralized update management
+        public void CombatUpdate(float deltaTime)
         {
             HandleCombatInput();
             UpdateCombatState();

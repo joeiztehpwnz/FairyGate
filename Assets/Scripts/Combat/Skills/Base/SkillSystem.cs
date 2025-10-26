@@ -4,7 +4,7 @@ using UnityEngine.Events;
 
 namespace FairyGate.Combat
 {
-    public class SkillSystem : MonoBehaviour, ISkillExecutor
+    public class SkillSystem : MonoBehaviour, ISkillExecutor, ICombatUpdatable
     {
         [Header("Skill Configuration")]
         [SerializeField] private CharacterStats characterStats;
@@ -63,9 +63,19 @@ namespace FairyGate.Combat
                 Debug.LogWarning($"SkillSystem on {gameObject.name} has no CharacterStats assigned. Using default values.");
                 characterStats = CharacterStats.CreateDefaultStats();
             }
+
+            // Register with combat update manager
+            CombatUpdateManager.Register(this);
         }
 
-        private void Update()
+        private void OnDestroy()
+        {
+            // Unregister to prevent memory leaks
+            CombatUpdateManager.Unregister(this);
+        }
+
+        // Renamed from Update() to CombatUpdate() for centralized update management
+        public void CombatUpdate(float deltaTime)
         {
             if (!canAct) return;
 
