@@ -16,6 +16,11 @@ namespace FairyGate.Combat
         private Queue<SkillExecution> pendingExecutions = new Queue<SkillExecution>();
         private List<SkillExecution> waitingDefensiveSkills = new List<SkillExecution>();
 
+        // List pool for Phase 3.3 optimization
+        private static Stack<List<SkillExecution>> skillExecutionListPool = new Stack<List<SkillExecution>>();
+        private static Stack<List<List<SkillExecution>>> nestedListPool = new Stack<List<List<SkillExecution>>>();
+        private static Stack<List<SpeedResolutionGroupResult>> resultsListPool = new Stack<List<SpeedResolutionGroupResult>>();
+
         private void Awake()
         {
             // Singleton pattern
@@ -33,6 +38,45 @@ namespace FairyGate.Combat
         private void Update()
         {
             ProcessPendingExecutions();
+        }
+
+        // List pool helper methods (Phase 3.3 optimization)
+        private static List<SkillExecution> GetSkillExecutionList()
+        {
+            return skillExecutionListPool.Count > 0 ? skillExecutionListPool.Pop() : new List<SkillExecution>();
+        }
+
+        private static void ReturnSkillExecutionList(List<SkillExecution> list)
+        {
+            list.Clear();
+            skillExecutionListPool.Push(list);
+        }
+
+        private static List<SpeedResolutionGroupResult> GetResultsList()
+        {
+            return resultsListPool.Count > 0 ? resultsListPool.Pop() : new List<SpeedResolutionGroupResult>();
+        }
+
+        private static void ReturnResultsList(List<SpeedResolutionGroupResult> list)
+        {
+            list.Clear();
+            resultsListPool.Push(list);
+        }
+
+        private static List<List<SkillExecution>> GetNestedList()
+        {
+            return nestedListPool.Count > 0 ? nestedListPool.Pop() : new List<List<SkillExecution>>();
+        }
+
+        private static void ReturnNestedList(List<List<SkillExecution>> list)
+        {
+            // Return inner lists to pool first
+            foreach (var innerList in list)
+            {
+                ReturnSkillExecutionList(innerList);
+            }
+            list.Clear();
+            nestedListPool.Push(list);
         }
 
         public void ProcessSkillExecution(SkillSystem skillSystem, SkillType skillType)
@@ -57,7 +101,7 @@ namespace FairyGate.Combat
         {
             if (pendingExecutions.Count == 0) return;
 
-            var offensiveSkills = new List<SkillExecution>();
+            var offensiveSkills = GetSkillExecutionList(); // Phase 3.3: Use pooled list
 
             // Collect all simultaneous offensive executions
             while (pendingExecutions.Count > 0)
@@ -90,6 +134,9 @@ namespace FairyGate.Combat
                     executionPool.Return(skill);
                 }
             }
+
+            // Return list to pool (Phase 3.3)
+            ReturnSkillExecutionList(offensiveSkills);
         }
 
         private void ProcessSingleOffensiveSkill(SkillExecution offensiveSkill)
@@ -117,6 +164,9 @@ namespace FairyGate.Combat
                     executionPool.Return(defense);
                 }
             }
+
+            // Return list to pool (Phase 3.3)
+            ReturnSkillExecutionList(validDefenses);
         }
 
         private void ProcessMultipleOffensiveSkills(List<SkillExecution> offensiveSkills)
@@ -141,11 +191,14 @@ namespace FairyGate.Combat
                     CancelSkillExecution(result.loser, "Lost speed resolution");
                 }
             }
+
+            // Return results list to pool (Phase 3.3)
+            ReturnResultsList(speedResults);
         }
 
         private List<SkillExecution> GetValidDefensiveResponses(SkillExecution offensiveSkill)
         {
-            var validResponses = new List<SkillExecution>();
+            var validResponses = GetSkillExecutionList(); // Phase 3.3: Use pooled list
 
             if (enableDebugLogs && offensiveSkill.skillType == SkillType.RangedAttack)
             {
@@ -542,7 +595,7 @@ namespace FairyGate.Combat
 
         private List<SpeedResolutionGroupResult> ResolveSpeedConflicts(List<SkillExecution> offensiveSkills)
         {
-            var results = new List<SpeedResolutionGroupResult>();
+            var results = GetResultsList(); // Phase 3.3: Use pooled list
 
             // Group skills by simultaneous execution timing
             var groups = GroupSimultaneousSkills(offensiveSkills);
@@ -566,12 +619,15 @@ namespace FairyGate.Combat
                 }
             }
 
+            // Return groups list to pool (Phase 3.3)
+            ReturnNestedList(groups);
+
             return results;
         }
 
         private List<List<SkillExecution>> GroupSimultaneousSkills(List<SkillExecution> skills)
         {
-            var groups = new List<List<SkillExecution>>();
+            var groups = GetNestedList(); // Phase 3.3: Use pooled list
 
             foreach (var skill in skills.OrderBy(s => s.timestamp))
             {
@@ -589,7 +645,9 @@ namespace FairyGate.Combat
 
                 if (!addedToGroup)
                 {
-                    groups.Add(new List<SkillExecution> { skill });
+                    var newGroup = GetSkillExecutionList(); // Phase 3.3: Use pooled list
+                    newGroup.Add(skill);
+                    groups.Add(newGroup);
                 }
             }
 
