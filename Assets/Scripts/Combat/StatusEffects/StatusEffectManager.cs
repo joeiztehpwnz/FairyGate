@@ -156,7 +156,14 @@ namespace FairyGate.Combat
                 }
                 else
                 {
-                    activeStatusEffects.RemoveAt(i);
+                    // Swap-remove pattern: O(1) instead of O(n)
+                    // Swap with last element, then remove last element
+                    int lastIndex = activeStatusEffects.Count - 1;
+                    if (i != lastIndex)
+                    {
+                        activeStatusEffects[i] = activeStatusEffects[lastIndex];
+                    }
+                    activeStatusEffects.RemoveAt(lastIndex);
                 }
             }
         }

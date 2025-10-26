@@ -12,6 +12,7 @@ namespace FairyGate.Combat
         private static CombatInteractionManager instance;
         public static CombatInteractionManager Instance => instance;
 
+        private SkillExecutionPool executionPool = new SkillExecutionPool();
         private Queue<SkillExecution> pendingExecutions = new Queue<SkillExecution>();
         private List<SkillExecution> waitingDefensiveSkills = new List<SkillExecution>();
 
@@ -36,13 +37,11 @@ namespace FairyGate.Combat
 
         public void ProcessSkillExecution(SkillSystem skillSystem, SkillType skillType)
         {
-            var execution = new SkillExecution
-            {
-                skillSystem = skillSystem,
-                skillType = skillType,
-                combatant = skillSystem.GetComponent<CombatController>(),
-                timestamp = Time.time
-            };
+            var execution = executionPool.Get();
+            execution.skillSystem = skillSystem;
+            execution.skillType = skillType;
+            execution.combatant = skillSystem.GetComponent<CombatController>();
+            execution.timestamp = Time.time;
 
             if (SpeedResolver.IsOffensiveSkill(skillType))
             {
@@ -64,9 +63,14 @@ namespace FairyGate.Combat
             while (pendingExecutions.Count > 0)
             {
                 var execution = pendingExecutions.Dequeue();
-                if (Time.time - execution.timestamp < 0.1f) // Small window for simultaneous execution
+                if (Time.time - execution.timestamp < CombatConstants.SIMULTANEOUS_EXECUTION_WINDOW)
                 {
                     offensiveSkills.Add(execution);
+                }
+                else
+                {
+                    // Execution too old, return to pool
+                    executionPool.Return(execution);
                 }
             }
 
@@ -74,11 +78,17 @@ namespace FairyGate.Combat
             {
                 // Single offensive skill
                 ProcessSingleOffensiveSkill(offensiveSkills[0]);
+                executionPool.Return(offensiveSkills[0]);
             }
             else if (offensiveSkills.Count > 1)
             {
                 // Multiple offensive skills - resolve speed conflicts
                 ProcessMultipleOffensiveSkills(offensiveSkills);
+                // Return all to pool after processing
+                foreach (var skill in offensiveSkills)
+                {
+                    executionPool.Return(skill);
+                }
             }
         }
 
@@ -103,6 +113,8 @@ namespace FairyGate.Combat
                 foreach (var defense in validDefenses)
                 {
                     ProcessSkillInteraction(offensiveSkill, defense);
+                    // Return defensive execution to pool after processing
+                    executionPool.Return(defense);
                 }
             }
         }
@@ -294,6 +306,13 @@ namespace FairyGate.Combat
             var defenderStatusEffects = defender.combatant.GetComponent<StatusEffectManager>();
             var defenderKnockdownMeter = defender.combatant.GetComponent<KnockdownMeterTracker>();
 
+            // Null safety checks
+            Debug.Assert(attackerHealth != null, $"HealthSystem is null on {attacker.combatant.gameObject.name}");
+            Debug.Assert(defenderHealth != null, $"HealthSystem is null on {defender.combatant.gameObject.name}");
+            Debug.Assert(attackerStatusEffects != null, $"StatusEffectManager is null on {attacker.combatant.gameObject.name}");
+            Debug.Assert(defenderStatusEffects != null, $"StatusEffectManager is null on {defender.combatant.gameObject.name}");
+            Debug.Assert(defenderKnockdownMeter != null, $"KnockdownMeterTracker is null on {defender.combatant.gameObject.name}");
+
             switch (interaction)
             {
                 case InteractionResult.AttackerStunned: // Attack vs Defense
@@ -438,13 +457,20 @@ namespace FairyGate.Combat
             var targetKnockdownMeter = target.GetComponent<KnockdownMeterTracker>();
             var targetStatusEffects = target.GetComponent<StatusEffectManager>();
 
-            if (targetHealth == null) return;
+            // Null safety checks
+            Debug.Assert(targetHealth != null, $"HealthSystem is null on {target.gameObject.name}");
+            Debug.Assert(targetKnockdownMeter != null, $"KnockdownMeterTracker is null on {target.gameObject.name}");
+            Debug.Assert(targetStatusEffects != null, $"StatusEffectManager is null on {target.gameObject.name}");
+            if (targetHealth == null) return; // Fallback for production builds
 
             var attackerStats = execution.combatant.Stats;
             var targetStats = targetHealth.GetComponent<CombatController>()?.Stats;
             var attackerWeapon = execution.combatant.GetComponent<WeaponController>()?.WeaponData;
 
-            if (attackerStats == null || targetStats == null || attackerWeapon == null) return;
+            Debug.Assert(attackerStats != null, $"CharacterStats is null on {execution.combatant.gameObject.name}");
+            Debug.Assert(targetStats != null, $"CharacterStats is null on {target.gameObject.name}");
+            Debug.Assert(attackerWeapon != null, $"WeaponData is null on {execution.combatant.gameObject.name}");
+            if (attackerStats == null || targetStats == null || attackerWeapon == null) return; // Fallback for production builds
 
             // SPECIAL HANDLING FOR RANGED ATTACK: Check if it hit
             if (execution.skillType == SkillType.RangedAttack)
@@ -546,7 +572,6 @@ namespace FairyGate.Combat
         private List<List<SkillExecution>> GroupSimultaneousSkills(List<SkillExecution> skills)
         {
             var groups = new List<List<SkillExecution>>();
-            const float simultaneousThreshold = 0.1f; // 100ms window
 
             foreach (var skill in skills.OrderBy(s => s.timestamp))
             {
@@ -554,7 +579,7 @@ namespace FairyGate.Combat
 
                 foreach (var group in groups)
                 {
-                    if (Mathf.Abs(skill.timestamp - group[0].timestamp) <= simultaneousThreshold)
+                    if (Mathf.Abs(skill.timestamp - group[0].timestamp) <= CombatConstants.SIMULTANEOUS_EXECUTION_WINDOW)
                     {
                         group.Add(skill);
                         addedToGroup = true;
@@ -634,6 +659,30 @@ namespace FairyGate.Combat
             public SkillType skillType;
             public CombatController combatant;
             public float timestamp;
+
+            public void Reset()
+            {
+                skillSystem = null;
+                skillType = SkillType.Attack;
+                combatant = null;
+                timestamp = 0f;
+            }
+        }
+
+        private class SkillExecutionPool
+        {
+            private Stack<SkillExecution> pool = new Stack<SkillExecution>(CombatConstants.SKILL_EXECUTION_POOL_INITIAL_CAPACITY);
+
+            public SkillExecution Get()
+            {
+                return pool.Count > 0 ? pool.Pop() : new SkillExecution();
+            }
+
+            public void Return(SkillExecution execution)
+            {
+                execution.Reset();
+                pool.Push(execution);
+            }
         }
 
         private class SpeedResolutionGroupResult

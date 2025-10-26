@@ -78,15 +78,16 @@ namespace FairyGate.Combat
             // If no explicit player found, find closest combatant
             if (player == null)
             {
-                float closestDistance = float.MaxValue;
+                float closestSqrDistance = float.MaxValue;
                 foreach (var combatant in combatants)
                 {
                     if (combatant != combatController)
                     {
-                        float distance = Vector3.Distance(transform.position, combatant.transform.position);
-                        if (distance < closestDistance)
+                        // Use squared distance to avoid expensive sqrt operation
+                        float sqrDistance = (transform.position - combatant.transform.position).sqrMagnitude;
+                        if (sqrDistance < closestSqrDistance)
                         {
-                            closestDistance = distance;
+                            closestSqrDistance = sqrDistance;
                             player = combatant.transform;
                         }
                     }
@@ -101,13 +102,15 @@ namespace FairyGate.Combat
 
         private void UpdateAI()
         {
-            float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+            // Use squared distance to avoid expensive sqrt operation
+            float sqrDistanceToPlayer = (transform.position - player.position).sqrMagnitude;
+            float sqrEngageDistance = engageDistance * engageDistance;
 
             // Simple movement AI
-            UpdateMovement(distanceToPlayer);
+            UpdateMovement(sqrDistanceToPlayer);
 
             // Enter combat if player is within engage distance
-            if (!combatController.IsInCombat && distanceToPlayer <= engageDistance)
+            if (!combatController.IsInCombat && sqrDistanceToPlayer <= sqrEngageDistance)
             {
                 combatController.EnterCombat(player);
                 if (enableDebugLogs)
@@ -133,7 +136,7 @@ namespace FairyGate.Combat
             }
         }
 
-        private void UpdateMovement(float distanceToPlayer)
+        private void UpdateMovement(float sqrDistanceToPlayer)
         {
             if (!movementController.CanMove)
             {
@@ -145,12 +148,16 @@ namespace FairyGate.Combat
             Vector3 directionToPlayer = (player.position - transform.position).normalized;
 
             // Move toward player if too far, away if too close
-            if (distanceToPlayer > optimalRange + 0.5f)
+            // Using squared distance comparisons
+            float sqrOptimalFar = (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR) * (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR);
+            float sqrOptimalNear = (optimalRange - CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR) * (optimalRange - CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR);
+
+            if (sqrDistanceToPlayer > sqrOptimalFar)
             {
                 // Move toward player
                 MoveInDirection(directionToPlayer);
             }
-            else if (distanceToPlayer < optimalRange - 0.5f)
+            else if (sqrDistanceToPlayer < sqrOptimalNear)
             {
                 // Move away from player
                 MoveInDirection(-directionToPlayer);

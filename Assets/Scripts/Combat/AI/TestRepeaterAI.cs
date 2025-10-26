@@ -316,13 +316,16 @@ namespace FairyGate.Combat
                 // Move toward player if out of optimal range
                 if (player != null)
                 {
-                    float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+                    // Use squared distance to avoid expensive sqrt operation
+                    float sqrDistanceToPlayer = (transform.position - player.position).sqrMagnitude;
+                    float sqrOptimalFar = (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR) * (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR);
+                    float sqrOptimalNear = (optimalRange - CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR) * (optimalRange - CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR);
 
-                    if (distanceToPlayer > optimalRange + 0.5f)
+                    if (sqrDistanceToPlayer > sqrOptimalFar)
                     {
                         MoveTowardsPlayer();
                     }
-                    else if (distanceToPlayer < optimalRange - 0.5f)
+                    else if (sqrDistanceToPlayer < sqrOptimalNear)
                     {
                         // Too close, back away slightly
                         StopMovement();
@@ -357,9 +360,11 @@ namespace FairyGate.Combat
                 // Move toward player if out of optimal range
                 if (player != null)
                 {
-                    float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+                    // Use squared distance to avoid expensive sqrt operation
+                    float sqrDistanceToPlayer = (transform.position - player.position).sqrMagnitude;
+                    float sqrOptimalFar = (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_FAR) * (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_FAR);
 
-                    if (distanceToPlayer > optimalRange + 1.0f)
+                    if (sqrDistanceToPlayer > sqrOptimalFar)
                     {
                         MoveTowardsPlayer();
                     }

@@ -70,15 +70,16 @@ namespace FairyGate.Combat
             // If no explicit player found, find closest combatant
             if (player == null)
             {
-                float closestDistance = float.MaxValue;
+                float closestSqrDistance = float.MaxValue;
                 foreach (var combatant in combatants)
                 {
                     if (combatant != combatController)
                     {
-                        float distance = Vector3.Distance(transform.position, combatant.transform.position);
-                        if (distance < closestDistance)
+                        // Use squared distance to avoid expensive sqrt operation
+                        float sqrDistance = (transform.position - combatant.transform.position).sqrMagnitude;
+                        if (sqrDistance < closestSqrDistance)
                         {
-                            closestDistance = distance;
+                            closestSqrDistance = sqrDistance;
                             player = combatant.transform;
                         }
                     }
@@ -95,15 +96,18 @@ namespace FairyGate.Combat
         {
             if (player == null) return;
 
-            float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+            // Use squared distance to avoid expensive sqrt operation
+            float sqrDistanceToPlayer = (transform.position - player.position).sqrMagnitude;
+            float sqrEngageDistance = engageDistance * engageDistance;
+            float sqrDisengageDistance = disengageDistance * disengageDistance;
 
             // Enter combat if player is within engage distance
-            if (!isInCombat && distanceToPlayer <= engageDistance)
+            if (!isInCombat && sqrDistanceToPlayer <= sqrEngageDistance)
             {
                 EnterCombat();
             }
             // Exit combat if player is too far
-            else if (isInCombat && distanceToPlayer > disengageDistance)
+            else if (isInCombat && sqrDistanceToPlayer > sqrDisengageDistance)
             {
                 ExitCombat();
             }
@@ -223,7 +227,10 @@ namespace FairyGate.Combat
         protected bool IsPlayerInRange()
         {
             if (player == null) return false;
-            return Vector3.Distance(transform.position, player.position) <= engageDistance;
+            // Use squared distance to avoid expensive sqrt operation
+            float sqrDistance = (transform.position - player.position).sqrMagnitude;
+            float sqrEngageDistance = engageDistance * engageDistance;
+            return sqrDistance <= sqrEngageDistance;
         }
 
         protected void MoveTowardsPlayer()

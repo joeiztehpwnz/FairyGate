@@ -80,5 +80,14 @@ namespace FairyGate.Combat
         public const float RANGED_ATTACK_AIMING_MOVEMENT_MODIFIER = 0.5f; // 50% speed
         public const float RANGED_ATTACK_RECOVERY_TIME = 0.3f;
         public const float RANGED_ATTACK_TRAIL_DURATION = 0.5f;
+
+        // Skill Execution & Processing
+        public const float SIMULTANEOUS_EXECUTION_WINDOW = 0.1f; // 100ms window for simultaneous skill execution
+        public const int SKILL_EXECUTION_POOL_INITIAL_CAPACITY = 16;
+        public const int COMBAT_UPDATABLES_INITIAL_CAPACITY = 32;
+
+        // AI Movement Constants
+        public const float AI_OPTIMAL_RANGE_BUFFER_NEAR = 0.5f;
+        public const float AI_OPTIMAL_RANGE_BUFFER_FAR = 1.0f;
     }
 }

@@ -81,7 +81,11 @@ namespace FairyGate.Combat
             float chargeElapsed = 0f;
             while (chargeElapsed < chargeSmashDuration)
             {
-                if (IsPlayerInRange() && Vector3.Distance(transform.position, player.position) > optimalRange + 0.5f)
+                // Use squared distance to avoid expensive sqrt operation
+                float sqrDistance = (transform.position - player.position).sqrMagnitude;
+                float sqrOptimalFar = (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR) * (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_NEAR);
+
+                if (IsPlayerInRange() && sqrDistance > sqrOptimalFar)
                 {
                     MoveTowardsPlayer();
                 }
@@ -135,8 +139,11 @@ namespace FairyGate.Combat
                 while (recoveryElapsed < recoveryDuration)
                 {
                     // Slowly approach if too far, but don't be aggressive
-                    float distanceToPlayer = Vector3.Distance(transform.position, player.position);
-                    if (distanceToPlayer > optimalRange + 1f)
+                    // Use squared distance to avoid expensive sqrt operation
+                    float sqrDistanceToPlayer = (transform.position - player.position).sqrMagnitude;
+                    float sqrOptimalFar = (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_FAR) * (optimalRange + CombatConstants.AI_OPTIMAL_RANGE_BUFFER_FAR);
+
+                    if (sqrDistanceToPlayer > sqrOptimalFar)
                     {
                         MoveTowardsPlayer();
                     }

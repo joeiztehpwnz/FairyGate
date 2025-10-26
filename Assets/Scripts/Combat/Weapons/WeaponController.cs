@@ -44,8 +44,10 @@ namespace FairyGate.Combat
         {
             if (target == null) return false;
 
-            float distance = Vector3.Distance(transform.position, target.position);
-            return distance <= weaponData.range;
+            // Use squared distance to avoid expensive sqrt operation
+            float sqrDistance = (transform.position - target.position).sqrMagnitude;
+            float sqrRange = weaponData.range * weaponData.range;
+            return sqrDistance <= sqrRange;
         }
 
         public bool CheckRangeForSkill(Transform target, SkillType skillType)
