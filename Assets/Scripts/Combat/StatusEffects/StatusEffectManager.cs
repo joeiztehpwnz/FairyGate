@@ -154,7 +154,7 @@ namespace FairyGate.Combat
                     if (!effect.isActive) // Effect expired
                     {
                         OnStatusEffectExpired?.Invoke(effect.type);
-                        OnStatusEffectRemoved.Invoke(effect.type);
+                        OnStatusEffectRemoved?.Invoke(effect.type);
 
                         if (enableDebugLogs)
                         {
