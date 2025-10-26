@@ -104,8 +104,8 @@ namespace FairyGate.Combat
             StopMovement(); // Stop for execution
             if (skillSystem.CurrentState == SkillExecutionState.Charged && skillSystem.CurrentSkill == SkillType.Smash)
             {
-                // Check if player is in range before executing
-                if (IsPlayerInRange())
+                // Check if weapon is in range before executing
+                if (IsWeaponInRange())
                 {
                     skillSystem.ExecuteSkill(SkillType.Smash);
                     if (enablePatternLogs)
@@ -115,11 +115,11 @@ namespace FairyGate.Combat
                 }
                 else
                 {
-                    // Cancel if out of range
+                    // Cancel if out of weapon range
                     skillSystem.CancelSkill();
                     if (enablePatternLogs)
                     {
-                        Debug.Log($"{gameObject.name} Knight cancelling Smash - target out of range");
+                        Debug.Log($"{gameObject.name} Knight cancelling Smash - target out of weapon range");
                     }
                 }
             }

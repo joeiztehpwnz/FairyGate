@@ -94,7 +94,8 @@ namespace FairyGate.Combat
             if (skillSystem.CurrentState == SkillExecutionState.Charged ||
                 skillSystem.CurrentState == SkillExecutionState.Aiming)
             {
-                if (IsPlayerInRange() || selectedSkill == SkillType.RangedAttack)
+                // Check weapon range for offensive skills, ranged attack doesn't need weapon range check
+                if (IsWeaponInRange() || selectedSkill == SkillType.RangedAttack)
                 {
                     skillSystem.ExecuteSkill(selectedSkill);
                     if (enablePatternLogs)
@@ -107,7 +108,7 @@ namespace FairyGate.Combat
                     skillSystem.CancelSkill();
                     if (enablePatternLogs)
                     {
-                        Debug.Log($"[TestAI] {gameObject.name} cancelled {selectedSkill} - target out of range");
+                        Debug.Log($"[TestAI] {gameObject.name} cancelled {selectedSkill} - target out of weapon range");
                     }
                 }
             }
@@ -151,12 +152,12 @@ namespace FairyGate.Combat
                 yield break;
             }
 
-            // Check range
-            if (!IsPlayerInRange())
+            // Check weapon range (not just engagement range)
+            if (!IsWeaponInRange())
             {
                 if (enablePatternLogs)
                 {
-                    Debug.Log($"[TestAI] {gameObject.name} cancelled Attack - target out of range");
+                    Debug.Log($"[TestAI] {gameObject.name} cancelled Attack - target out of weapon range");
                 }
                 yield return StartCoroutine(WaitForPhaseComplete(0.5f));
                 yield break;

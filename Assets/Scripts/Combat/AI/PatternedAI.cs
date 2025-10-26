@@ -19,6 +19,7 @@ namespace FairyGate.Combat
         protected SkillSystem skillSystem;
         protected MovementController movementController;
         protected StatusEffectManager statusEffectManager;
+        protected WeaponController weaponController;
         protected Transform player;
 
         // Pattern state
@@ -39,6 +40,9 @@ namespace FairyGate.Combat
             skillSystem = GetComponent<SkillSystem>();
             movementController = GetComponent<MovementController>();
             statusEffectManager = GetComponent<StatusEffectManager>();
+            weaponController = GetComponent<WeaponController>();
+
+            Debug.Assert(weaponController != null, $"WeaponController is null on {gameObject.name}");
         }
 
         protected virtual void Start()
@@ -231,6 +235,13 @@ namespace FairyGate.Combat
             float sqrDistance = (transform.position - player.position).sqrMagnitude;
             float sqrEngageDistance = engageDistance * engageDistance;
             return sqrDistance <= sqrEngageDistance;
+        }
+
+        protected bool IsWeaponInRange()
+        {
+            if (player == null || weaponController == null) return false;
+            // Delegates to optimized WeaponController.IsInRange() which uses squared distance
+            return weaponController.IsInRange(player);
         }
 
         protected void MoveTowardsPlayer()
