@@ -30,6 +30,21 @@ namespace FairyGate.Combat.Editor
             }
         }
 
+        [MenuItem("Combat/Spawn Enemy/Soldier (Balanced)")]
+        public static void SpawnSoldier() => SpawnEnemyArchetype(EnemyArchetype.Soldier);
+
+        [MenuItem("Combat/Spawn Enemy/Berserker (Glass Cannon)")]
+        public static void SpawnBerserker() => SpawnEnemyArchetype(EnemyArchetype.Berserker);
+
+        [MenuItem("Combat/Spawn Enemy/Guardian (Tank)")]
+        public static void SpawnGuardian() => SpawnEnemyArchetype(EnemyArchetype.Guardian);
+
+        [MenuItem("Combat/Spawn Enemy/Assassin (Speedster)")]
+        public static void SpawnAssassin() => SpawnEnemyArchetype(EnemyArchetype.Assassin);
+
+        [MenuItem("Combat/Spawn Enemy/Archer (Ranged)")]
+        public static void SpawnArcher() => SpawnEnemyArchetype(EnemyArchetype.Archer);
+
         private static void PerformCompleteSandboxSetup()
         {
             EditorUtility.DisplayProgressBar("Testing Sandbox Setup", "Creating managers...", 0.1f);
@@ -589,6 +604,94 @@ namespace FairyGate.Combat.Editor
 
                 Debug.Log("✅ All combat objects cleared from scene");
             }
+        }
+
+        #endregion
+
+        #region Enemy Spawning
+
+        private static int enemySpawnCount = 0;
+        private static Vector3 lastEnemyPosition = new Vector3(3, 0, 0);
+
+        private static void SpawnEnemyArchetype(EnemyArchetype archetype)
+        {
+            // Get archetype configuration
+            var config = EnemyArchetypeConfig.GetArchetypeData(archetype);
+
+            // Calculate spawn position (offset from last spawn)
+            enemySpawnCount++;
+            Vector3 spawnPos = lastEnemyPosition + new Vector3(2, 0, enemySpawnCount % 2 == 0 ? 2 : -2);
+            lastEnemyPosition = spawnPos;
+
+            // Create weapon (default to sword for most, dagger for assassin/archer)
+            WeaponType weaponType = (archetype == EnemyArchetype.Assassin || archetype == EnemyArchetype.Archer)
+                ? WeaponType.Dagger
+                : WeaponType.Sword;
+            var weapon = CreateOrLoadWeaponData($"Test{weaponType}", weaponType);
+
+            // Create enemy character
+            string enemyName = $"{archetype}_{enemySpawnCount}";
+            var enemy = CreateFullCharacter(enemyName, spawnPos, config.stats, weapon, true);
+
+            // Remove default AI and add configured AI
+            var simpleAI = enemy.GetComponent<SimpleTestAI>();
+            if (simpleAI != null) DestroyImmediate(simpleAI);
+
+            var knightAI = enemy.GetComponent<KnightAI>();
+            if (knightAI != null) DestroyImmediate(knightAI);
+
+            var patternedAI = enemy.GetComponent<PatternedAI>();
+            if (patternedAI != null) DestroyImmediate(patternedAI);
+
+            // Add appropriate AI based on configuration
+            switch (config.aiType)
+            {
+                case "SimpleTestAI":
+                    var simpleTestAI = enemy.AddComponent<SimpleTestAI>();
+                    SetSerializedProperty(simpleTestAI, "attackWeight", config.attackWeight);
+                    SetSerializedProperty(simpleTestAI, "defenseWeight", config.defenseWeight);
+                    SetSerializedProperty(simpleTestAI, "counterWeight", config.counterWeight);
+                    SetSerializedProperty(simpleTestAI, "smashWeight", config.smashWeight);
+                    SetSerializedProperty(simpleTestAI, "windmillWeight", config.windmillWeight);
+                    SetSerializedProperty(simpleTestAI, "skillCooldown", config.skillCooldown);
+                    break;
+
+                case "KnightAI":
+                    var knightTestAI = enemy.AddComponent<KnightAI>();
+                    SetSerializedProperty(knightTestAI, "attackWeight", config.attackWeight);
+                    SetSerializedProperty(knightTestAI, "defenseWeight", config.defenseWeight);
+                    SetSerializedProperty(knightTestAI, "counterWeight", config.counterWeight);
+                    SetSerializedProperty(knightTestAI, "smashWeight", config.smashWeight);
+                    SetSerializedProperty(knightTestAI, "windmillWeight", config.windmillWeight);
+                    break;
+
+                case "PatternedAI":
+                    var patternTestAI = enemy.AddComponent<PatternedAI>();
+                    // PatternedAI uses its own pattern system, weights set internally
+                    break;
+
+                case "TestRepeaterAI":
+                    var repeaterAI = enemy.AddComponent<TestRepeaterAI>();
+                    SetSerializedProperty(repeaterAI, "selectedSkill", config.repeaterSkill);
+                    SetSerializedProperty(repeaterAI, "enableMovement", config.enableMovement);
+                    SetSerializedProperty(repeaterAI, "repeatDelay", config.skillCooldown);
+                    break;
+            }
+
+            // Add equipment manager
+            AddEquipmentManager(enemy);
+
+            // Setup combat targeting with player
+            var player = GameObject.Find("Player");
+            if (player != null)
+            {
+                SetupCombatTargeting(player, enemy);
+            }
+
+            Debug.Log($"✅ Spawned {archetype} enemy at {spawnPos}");
+            Debug.Log($"   Stats: STR={config.stats.strength} DEX={config.stats.dexterity} VIT={config.stats.vitality} " +
+                      $"DEF={config.stats.physicalDefense} FOCUS={config.stats.focus}");
+            Debug.Log($"   AI: {config.aiType}");
         }
 
         #endregion
