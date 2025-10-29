@@ -11,7 +11,6 @@ namespace FairyGate.Combat
 
         [Header("Debug")]
         [SerializeField] private bool enableDebugLogs = true;
-        [SerializeField] private bool showHealthGUI = true;
 
         // C# Events (replaces UnityEvents for performance)
         public event Action<int, Transform> OnDamageReceived; // damage, attacker
@@ -187,30 +186,6 @@ namespace FairyGate.Combat
             }
         }
 
-        // GUI Debug Display
-        private void OnGUI()
-        {
-            if (showHealthGUI && Application.isPlaying)
-            {
-                Vector3 screenPos = Camera.main.WorldToScreenPoint(transform.position + Vector3.up * 2f);
-                screenPos.y = Screen.height - screenPos.y;
-
-                // Health bar background
-                GUI.color = Color.black;
-                GUI.DrawTexture(new Rect(screenPos.x - 52, screenPos.y - 12, 104, 14), Texture2D.whiteTexture);
-
-                // Health bar fill
-                float healthPercent = HealthPercentage;
-                GUI.color = Color.Lerp(Color.red, Color.green, healthPercent);
-                GUI.DrawTexture(new Rect(screenPos.x - 50, screenPos.y - 10, 100 * healthPercent, 10), Texture2D.whiteTexture);
-
-                // Health text
-                GUI.color = Color.white;
-                GUI.Label(new Rect(screenPos.x - 30, screenPos.y + 5, 60, 20), $"{currentHealth}/{MaxHealth}");
-
-                GUI.color = Color.white; // Reset GUI color
-            }
-        }
 
         private void OnValidate()
         {
