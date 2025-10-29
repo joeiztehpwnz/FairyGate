@@ -8,16 +8,24 @@ namespace FairyGate.Combat
         [Header("Component References")]
         [SerializeField] private SkillSystem skillSystem;
         [SerializeField] private HealthSystem healthSystem;
+        [SerializeField] private StaminaSystem staminaSystem;
         [SerializeField] private KnockdownMeterTracker knockdownMeter;
         [SerializeField] private StatusEffectManager statusEffectManager;
 
         [Header("Display Settings")]
         [SerializeField] private bool showSkillInfo = true;
         [SerializeField] private bool showHealthInfo = false;
+        [SerializeField] private bool showStaminaBar = true;
         [SerializeField] private bool showMeterInfo = true;
+        [SerializeField] private bool showMeterBar = true;
         [SerializeField] private bool showStatusInfo = true;
         [SerializeField] private float heightOffset = 3.0f;
         [SerializeField] private int fontSize = 14;
+
+        [Header("Bar Settings")]
+        [SerializeField] private float barWidth = 150f;
+        [SerializeField] private float barHeight = 8f;
+        [SerializeField] private float barSpacing = 3f;
 
         [Header("Skill Icon Settings")]
         [SerializeField] private int iconFontSize = 48;
@@ -35,6 +43,8 @@ namespace FairyGate.Combat
         private SkillExecutionState currentSkillState;
         private int currentHealth;
         private int maxHealth;
+        private int currentStamina;
+        private int maxStamina;
         private float currentMeter;
         private float maxMeter;
         private string currentStatusText = "";
@@ -50,6 +60,7 @@ namespace FairyGate.Combat
             // Auto-find components if not assigned
             if (skillSystem == null) skillSystem = GetComponent<SkillSystem>();
             if (healthSystem == null) healthSystem = GetComponent<HealthSystem>();
+            if (staminaSystem == null) staminaSystem = GetComponent<StaminaSystem>();
             if (knockdownMeter == null) knockdownMeter = GetComponent<KnockdownMeterTracker>();
             if (statusEffectManager == null) statusEffectManager = GetComponent<StatusEffectManager>();
         }
@@ -68,6 +79,14 @@ namespace FairyGate.Combat
                 healthSystem.OnHealthChanged += HandleHealthChanged;
                 maxHealth = healthSystem.MaxHealth;
                 currentHealth = healthSystem.CurrentHealth;
+            }
+
+            // Subscribe to stamina events
+            if (staminaSystem != null)
+            {
+                staminaSystem.OnStaminaChanged += HandleStaminaChanged;
+                maxStamina = staminaSystem.MaxStamina;
+                currentStamina = staminaSystem.CurrentStamina;
             }
 
             // Subscribe to meter events
@@ -89,6 +108,11 @@ namespace FairyGate.Combat
             if (healthSystem != null)
             {
                 healthSystem.OnHealthChanged -= HandleHealthChanged;
+            }
+
+            if (staminaSystem != null)
+            {
+                staminaSystem.OnStaminaChanged -= HandleStaminaChanged;
             }
 
             if (knockdownMeter != null)
@@ -136,6 +160,12 @@ namespace FairyGate.Combat
         {
             currentHealth = health;
             maxHealth = max;
+        }
+
+        private void HandleStaminaChanged(int stamina, int max)
+        {
+            currentStamina = stamina;
+            maxStamina = max;
         }
 
         private void HandleMeterChanged(float meter, float max)
@@ -194,6 +224,20 @@ namespace FairyGate.Combat
                     DrawPlaceholderIcon(screenPos.x, currentY);
                 }
                 currentY += iconFontSize + 5; // Always advance to maintain stability
+
+                // Draw skill charge progress bar (only when charging/aiming)
+                if (skillSystem != null && (currentSkillState == SkillExecutionState.Charging || currentSkillState == SkillExecutionState.Aiming))
+                {
+                    DrawChargeProgressBar(screenPos.x, currentY);
+                    currentY += barHeight + barSpacing;
+                }
+            }
+
+            // Draw stamina bar
+            if (showStaminaBar && staminaSystem != null)
+            {
+                DrawStaminaBar(screenPos.x, currentY);
+                currentY += barHeight + barSpacing;
             }
 
             // Draw health info
@@ -204,7 +248,14 @@ namespace FairyGate.Combat
                 currentY += lineHeight;
             }
 
-            // Draw knockdown meter
+            // Draw knockdown meter bar
+            if (showMeterBar && knockdownMeter != null)
+            {
+                DrawKnockdownMeterBar(screenPos.x, currentY);
+                currentY += barHeight + barSpacing;
+            }
+
+            // Draw knockdown meter text (optional)
             if (showMeterInfo && knockdownMeter != null)
             {
                 GUI.Label(new Rect(screenPos.x - panelWidth / 2, currentY, panelWidth, lineHeight),
@@ -323,6 +374,109 @@ namespace FairyGate.Combat
                     _ => "❓"
                 };
             }
+        }
+
+        private void DrawChargeProgressBar(float centerX, float centerY)
+        {
+            float progress = skillSystem.ChargeProgress;
+
+            // Background bar (dark gray)
+            Rect bgRect = new Rect(centerX - barWidth / 2, centerY, barWidth, barHeight);
+            GUI.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+            GUI.DrawTexture(bgRect, Texture2D.whiteTexture);
+
+            // Progress bar (cyan/blue for charging)
+            if (progress > 0)
+            {
+                Rect fillRect = new Rect(centerX - barWidth / 2, centerY, barWidth * progress, barHeight);
+                GUI.color = new Color(0f, 0.8f, 1f, 0.9f); // Cyan
+                GUI.DrawTexture(fillRect, Texture2D.whiteTexture);
+            }
+
+            // Border
+            GUI.color = Color.black;
+            GUI.Box(bgRect, GUIContent.none);
+
+            // Reset color
+            GUI.color = Color.white;
+        }
+
+        private void DrawStaminaBar(float centerX, float centerY)
+        {
+            float percentage = maxStamina > 0 ? (float)currentStamina / maxStamina : 0f;
+
+            // Background bar (dark gray)
+            Rect bgRect = new Rect(centerX - barWidth / 2, centerY, barWidth, barHeight);
+            GUI.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+            GUI.DrawTexture(bgRect, Texture2D.whiteTexture);
+
+            // Stamina bar (green to yellow to red based on percentage)
+            if (percentage > 0)
+            {
+                Color barColor;
+                if (percentage > 0.6f)
+                    barColor = new Color(0.2f, 0.8f, 0.2f, 0.9f); // Green
+                else if (percentage > 0.3f)
+                    barColor = new Color(0.9f, 0.9f, 0.2f, 0.9f); // Yellow
+                else
+                    barColor = new Color(0.9f, 0.2f, 0.2f, 0.9f); // Red
+
+                Rect fillRect = new Rect(centerX - barWidth / 2, centerY, barWidth * percentage, barHeight);
+                GUI.color = barColor;
+                GUI.DrawTexture(fillRect, Texture2D.whiteTexture);
+            }
+
+            // Border
+            GUI.color = Color.black;
+            GUI.Box(bgRect, GUIContent.none);
+
+            // Reset color
+            GUI.color = Color.white;
+        }
+
+        private void DrawKnockdownMeterBar(float centerX, float centerY)
+        {
+            float percentage = maxMeter > 0 ? currentMeter / maxMeter : 0f;
+
+            // Background bar (dark gray)
+            Rect bgRect = new Rect(centerX - barWidth / 2, centerY, barWidth, barHeight);
+            GUI.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+            GUI.DrawTexture(bgRect, Texture2D.whiteTexture);
+
+            // Meter bar (orange, intensifies toward red as it fills)
+            if (percentage > 0)
+            {
+                Color barColor;
+                if (percentage < 0.5f)
+                    barColor = new Color(1f, 0.6f, 0f, 0.9f); // Orange
+                else if (percentage < 1.0f)
+                    barColor = new Color(1f, 0.4f, 0f, 0.9f); // Deep orange (past 50% knockback threshold)
+                else
+                    barColor = new Color(1f, 0f, 0f, 0.9f); // Red (at 100% knockdown)
+
+                Rect fillRect = new Rect(centerX - barWidth / 2, centerY, barWidth * percentage, barHeight);
+                GUI.color = barColor;
+                GUI.DrawTexture(fillRect, Texture2D.whiteTexture);
+            }
+
+            // Draw 50% threshold marker (knockback)
+            float threshold50X = centerX - barWidth / 2 + barWidth * 0.5f;
+            Rect threshold50Rect = new Rect(threshold50X - 1, centerY, 2, barHeight);
+            GUI.color = new Color(1f, 1f, 0f, 0.8f); // Yellow line
+            GUI.DrawTexture(threshold50Rect, Texture2D.whiteTexture);
+
+            // Draw 100% threshold marker (knockdown) - technically the end, but helps visual clarity
+            float threshold100X = centerX - barWidth / 2 + barWidth * 1.0f;
+            Rect threshold100Rect = new Rect(threshold100X - 2, centerY, 2, barHeight);
+            GUI.color = new Color(1f, 0f, 0f, 0.9f); // Red line
+            GUI.DrawTexture(threshold100Rect, Texture2D.whiteTexture);
+
+            // Border
+            GUI.color = Color.black;
+            GUI.Box(bgRect, GUIContent.none);
+
+            // Reset color
+            GUI.color = Color.white;
         }
     }
 }
