@@ -14,7 +14,7 @@ namespace FairyGate.Combat
 
         [Header("Display Settings")]
         [SerializeField] private bool showSkillInfo = true;
-        [SerializeField] private bool showHealthInfo = false;
+        [SerializeField] private bool showHealthBar = true;
         [SerializeField] private bool showStaminaBar = true;
         [SerializeField] private bool showMeterBar = true;
         [SerializeField] private bool showStatusInfo = true;
@@ -232,19 +232,18 @@ namespace FairyGate.Combat
                 }
             }
 
+            // Draw health bar
+            if (showHealthBar && healthSystem != null)
+            {
+                DrawHealthBar(screenPos.x, currentY);
+                currentY += barHeight + barSpacing;
+            }
+
             // Draw stamina bar
             if (showStaminaBar && staminaSystem != null)
             {
                 DrawStaminaBar(screenPos.x, currentY);
                 currentY += barHeight + barSpacing;
-            }
-
-            // Draw health info
-            if (showHealthInfo && healthSystem != null)
-            {
-                GUI.Label(new Rect(screenPos.x - panelWidth / 2, currentY, panelWidth, lineHeight),
-                    $"HP: {currentHealth}/{maxHealth}");
-                currentY += lineHeight;
             }
 
             // Draw knockdown meter bar
@@ -381,6 +380,37 @@ namespace FairyGate.Combat
             {
                 Rect fillRect = new Rect(centerX - barWidth / 2, centerY, barWidth * progress, barHeight);
                 GUI.color = new Color(0f, 0.8f, 1f, 0.9f); // Cyan
+                GUI.DrawTexture(fillRect, Texture2D.whiteTexture);
+            }
+
+            // Border
+            GUI.color = Color.black;
+            GUI.Box(bgRect, GUIContent.none);
+
+            // Reset color
+            GUI.color = Color.white;
+        }
+
+        private void DrawHealthBar(float centerX, float centerY)
+        {
+            float percentage = maxHealth > 0 ? (float)currentHealth / maxHealth : 0f;
+
+            // Background bar (dark gray)
+            Rect bgRect = new Rect(centerX - barWidth / 2, centerY, barWidth, barHeight);
+            GUI.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+            GUI.DrawTexture(bgRect, Texture2D.whiteTexture);
+
+            // Health bar (red to green gradient based on percentage)
+            if (percentage > 0)
+            {
+                Color barColor = Color.Lerp(
+                    new Color(0.9f, 0.1f, 0.1f, 0.9f), // Red (low health)
+                    new Color(0.1f, 0.9f, 0.1f, 0.9f), // Green (full health)
+                    percentage
+                );
+
+                Rect fillRect = new Rect(centerX - barWidth / 2, centerY, barWidth * percentage, barHeight);
+                GUI.color = barColor;
                 GUI.DrawTexture(fillRect, Texture2D.whiteTexture);
             }
 
