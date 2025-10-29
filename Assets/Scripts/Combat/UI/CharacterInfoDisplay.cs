@@ -16,7 +16,6 @@ namespace FairyGate.Combat
         [SerializeField] private bool showSkillInfo = true;
         [SerializeField] private bool showHealthInfo = false;
         [SerializeField] private bool showStaminaBar = true;
-        [SerializeField] private bool showMeterInfo = true;
         [SerializeField] private bool showMeterBar = true;
         [SerializeField] private bool showStatusInfo = true;
         [SerializeField] private float heightOffset = 3.0f;
@@ -253,14 +252,6 @@ namespace FairyGate.Combat
             {
                 DrawKnockdownMeterBar(screenPos.x, currentY);
                 currentY += barHeight + barSpacing;
-            }
-
-            // Draw knockdown meter text (optional)
-            if (showMeterInfo && knockdownMeter != null)
-            {
-                GUI.Label(new Rect(screenPos.x - panelWidth / 2, currentY, panelWidth, lineHeight),
-                    $"Meter: {currentMeter:F1}/{maxMeter:F0}");
-                currentY += lineHeight;
             }
 
             // Draw status effects
