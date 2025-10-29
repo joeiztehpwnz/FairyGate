@@ -79,24 +79,12 @@ namespace FairyGate.Combat.Editor
             // Add Equipment Manager to Player
             AddEquipmentManager(player);
 
-            EditorUtility.DisplayProgressBar("Testing Sandbox Setup", "Creating Enemy...", 0.6f);
-
-            // 5. Create Enemy with SimpleTestAI
-            var enemy = CreateFullCharacter("Enemy", new Vector3(3, 0, 0), enemyStats, mace, true);
-
-            // Enemy already has SimpleTestAI from CreateFullCharacter
-            AddEquipmentManager(enemy);
-
             EditorUtility.DisplayProgressBar("Testing Sandbox Setup", "Creating UI System...", 0.7f);
 
-            // 6. Create Testing UI (OnGUI-based bars + skill selector)
-            CreateHealthStaminaBars(player, enemy);
+            // 5. Create UI for Player
+            var playerInfoDisplay = player.AddComponent<CharacterInfoDisplay>();
+
             CreateTestingUI();
-
-            EditorUtility.DisplayProgressBar("Testing Sandbox Setup", "Configuring combat targeting...", 0.9f);
-
-            // 7. Setup Combat Targeting
-            SetupCombatTargeting(player, enemy);
 
             EditorUtility.ClearProgressBar();
 
@@ -119,11 +107,13 @@ namespace FairyGate.Combat.Editor
             Debug.Log("  • Wanderer (Balanced) - Moderate all stats");
             Debug.Log("  • Berserker (Glass Cannon) - High Strength, Low Defense");
             Debug.Log("");
-            Debug.Log("🤖 ENEMY AI:");
-            Debug.Log("  • SimpleTestAI - Reactive AI with weighted skill selection");
+            Debug.Log("🎯 SPAWN ENEMIES:");
+            Debug.Log("  • Use Combat menu to spawn enemies: Soldier, Berserker, Guardian, Assassin, Archer");
+            Debug.Log("  • Each enemy has unique stat distribution and AI behavior");
             Debug.Log("");
             Debug.Log("📊 UI FEATURES:");
-            Debug.Log("  • Health/Stamina bars for Player and Enemy");
+            Debug.Log("  • CharacterInfoDisplay - Health, Stamina, Knockdown Meter bars");
+            Debug.Log("  • Skill charge progress, status effects, skill icons");
             Debug.Log("");
             Debug.Log("═══════════════════════════════════════════════════════════");
 
@@ -186,7 +176,7 @@ namespace FairyGate.Combat.Editor
                 if (groundRenderer != null)
                 {
                     var groundMaterial = new Material(Shader.Find("Standard"));
-                    groundMaterial.color = new Color(0.7f, 0.8f, 0.7f); // Light greenish-gray
+                    groundMaterial.color = new Color(0.0314f, 0.3412f, 0.0314f); // #085708 - Dark green
                     groundRenderer.material = groundMaterial;
                 }
 
@@ -430,20 +420,6 @@ namespace FairyGate.Combat.Editor
 
         #region UI Creation
 
-        private static void CreateHealthStaminaBars(GameObject player, GameObject enemy)
-        {
-            // Add CharacterInfoDisplay to both player and enemy
-            // It will auto-find all components (SkillSystem, HealthSystem, StaminaSystem, etc.)
-
-            var playerInfoDisplay = player.AddComponent<CharacterInfoDisplay>();
-            Debug.Log("✅ Added CharacterInfoDisplay to Player");
-
-            var enemyInfoDisplay = enemy.AddComponent<CharacterInfoDisplay>();
-            Debug.Log("✅ Added CharacterInfoDisplay to Enemy");
-
-            Debug.Log("✅ Created Character Info Displays (world-space UI with visual bars)");
-        }
-
         private static void CreateTestingUI()
         {
             // Create UI Manager GameObject
@@ -577,6 +553,9 @@ namespace FairyGate.Combat.Editor
 
             // Add equipment manager
             AddEquipmentManager(enemy);
+
+            // Add CharacterInfoDisplay for UI
+            var enemyInfoDisplay = enemy.AddComponent<CharacterInfoDisplay>();
 
             // Setup combat targeting with player
             var player = GameObject.Find("Player");
