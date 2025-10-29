@@ -15,6 +15,7 @@ namespace FairyGate.Combat
         [SerializeField] private bool enableDebugLogs = true;
 
         private Transform lastAttacker;
+        private bool hasTriggeredKnockback = false;
 
         // C# Events (replaces UnityEvents for performance)
         public event Action<float, float> OnMeterChanged; // current, max
@@ -60,6 +61,16 @@ namespace FairyGate.Combat
                 {
                     OnMeterChanged?.Invoke(currentMeter, maxMeter);
                 }
+
+                // Reset knockback flag if meter decays below threshold
+                if (hasTriggeredKnockback && currentMeter < CombatConstants.KNOCKBACK_METER_THRESHOLD)
+                {
+                    hasTriggeredKnockback = false;
+                    if (enableDebugLogs)
+                    {
+                        Debug.Log($"{gameObject.name} knockback flag reset (meter below threshold)");
+                    }
+                }
             }
         }
 
@@ -96,18 +107,55 @@ namespace FairyGate.Combat
 
             OnMeterChanged?.Invoke(currentMeter, maxMeter);
 
-            // Check for knockdown threshold
+            // Check for knockback threshold (50%) - triggers once per cycle
+            if (!hasTriggeredKnockback && currentMeter >= CombatConstants.KNOCKBACK_METER_THRESHOLD && oldMeter < CombatConstants.KNOCKBACK_METER_THRESHOLD)
+            {
+                TriggerKnockback();
+                hasTriggeredKnockback = true;
+            }
+
+            // Check for knockdown threshold (100%)
             if (currentMeter >= maxMeter && oldMeter < maxMeter)
             {
                 TriggerMeterKnockdown();
             }
         }
 
+        public void TriggerKnockback()
+        {
+            if (enableDebugLogs)
+            {
+                Debug.Log($"{gameObject.name} knockback meter reached 50% threshold! Triggering knockback.");
+            }
+
+            // Apply knockback with displacement
+            if (statusEffectManager != null)
+            {
+                Vector3 displacement = Vector3.zero;
+
+                if (lastAttacker != null)
+                {
+                    // Calculate displacement away from the last attacker
+                    Vector3 knockbackDirection = (transform.position - lastAttacker.position).normalized;
+                    displacement = knockbackDirection * CombatConstants.KNOCKBACK_DISPLACEMENT_DISTANCE;
+                }
+                else
+                {
+                    // Default backward displacement if no attacker is known
+                    displacement = -transform.forward * CombatConstants.KNOCKBACK_DISPLACEMENT_DISTANCE;
+                }
+
+                statusEffectManager.ApplyKnockback(displacement);
+            }
+
+            // Meter continues to accumulate after knockback
+        }
+
         public void TriggerMeterKnockdown()
         {
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} knockdown meter reached threshold! Triggering meter knockdown.");
+                Debug.Log($"{gameObject.name} knockdown meter reached 100% threshold! Triggering meter knockdown.");
             }
 
             // Apply meter-based knockdown with displacement
@@ -194,17 +242,6 @@ namespace FairyGate.Combat
             currentMeter = Mathf.Clamp(currentMeter, 0f, maxMeter);
         }
 
-        // Debug visualization
-        private void OnGUI()
-        {
-            if (enableDebugLogs && Application.isPlaying)
-            {
-                Vector3 screenPos = Camera.main.WorldToScreenPoint(transform.position + Vector3.up * 2.5f);
-                screenPos.y = Screen.height - screenPos.y; // Flip Y coordinate
-
-                GUI.Label(new Rect(screenPos.x - 50, screenPos.y, 100, 20),
-                    $"Meter: {currentMeter:F1}/{maxMeter:F0}");
-            }
-        }
+        // OnGUI removed - now handled by CharacterInfoDisplay component
     }
 }

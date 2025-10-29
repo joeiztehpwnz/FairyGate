@@ -14,7 +14,7 @@ namespace FairyGate.Combat
         [SerializeField] private Color rangeColor = Color.red;
 
         public WeaponData WeaponData => weaponData;
-        public float CurrentRange => weaponData?.range ?? 1f;
+        public float CurrentRange => (weaponData?.range ?? 1f) * CombatConstants.WEAPON_RANGE_MULTIPLIER;
         public int CurrentDamage => weaponData?.baseDamage ?? 1;
         public float CurrentSpeed => weaponData?.speed ?? 1f;
         public float CurrentStunDuration => weaponData?.stunDuration ?? 1f;
@@ -46,7 +46,7 @@ namespace FairyGate.Combat
 
             // Use squared distance to avoid expensive sqrt operation
             float sqrDistance = (transform.position - target.position).sqrMagnitude;
-            float sqrRange = weaponData.range * weaponData.range;
+            float sqrRange = CurrentRange * CurrentRange;
             return sqrDistance <= sqrRange;
         }
 
@@ -68,7 +68,7 @@ namespace FairyGate.Combat
 
         public Transform[] GetTargetsInRange()
         {
-            Collider[] colliders = Physics.OverlapSphere(transform.position, weaponData.range, targetLayerMask);
+            Collider[] colliders = Physics.OverlapSphere(transform.position, CurrentRange, targetLayerMask);
 
             var targets = new System.Collections.Generic.List<Transform>();
             foreach (var collider in colliders)
@@ -117,13 +117,13 @@ namespace FairyGate.Combat
             if (showRangeGizmos && weaponData != null)
             {
                 Gizmos.color = rangeColor;
-                Gizmos.DrawWireSphere(transform.position, weaponData.range);
+                Gizmos.DrawWireSphere(transform.position, CurrentRange);
 
                 // Draw weapon name
                 #if UNITY_EDITOR
                 UnityEditor.Handles.Label(
-                    transform.position + Vector3.up * (weaponData.range + 0.5f),
-                    $"{weaponData.weaponName}\nRange: {weaponData.range:F1}\nDamage: {weaponData.baseDamage}\nSpeed: {weaponData.speed:F1}"
+                    transform.position + Vector3.up * (CurrentRange + 0.5f),
+                    $"{weaponData.weaponName}\nRange: {CurrentRange:F1} ({weaponData.range:F1} x {CombatConstants.WEAPON_RANGE_MULTIPLIER:F1})\nDamage: {weaponData.baseDamage}\nSpeed: {weaponData.speed:F1}"
                 );
                 #endif
             }

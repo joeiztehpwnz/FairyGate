@@ -13,7 +13,6 @@ namespace FairyGate.Combat
 
         [Header("Debug")]
         [SerializeField] private bool enableDebugLogs = true;
-        [SerializeField] private bool showStatusEffectGUI = true;
 
         // C# Events (replaces UnityEvents for performance)
         public event Action<StatusEffect> OnStatusEffectApplied;
@@ -27,10 +26,11 @@ namespace FairyGate.Combat
 
         // Status effect queries
         public bool IsStunned => HasStatusEffect(StatusEffectType.Stun);
+        public bool IsKnockedBack => HasStatusEffect(StatusEffectType.Knockback);
         public bool IsKnockedDown => HasStatusEffect(StatusEffectType.InteractionKnockdown) || HasStatusEffect(StatusEffectType.MeterKnockdown);
         public bool IsResting => HasStatusEffect(StatusEffectType.Rest);
-        public bool CanMove => !IsStunned && !IsKnockedDown;
-        public bool CanAct => !IsKnockedDown; // Can charge skills while stunned
+        public bool CanMove => !IsStunned && !IsKnockedBack && !IsKnockedDown;
+        public bool CanAct => !IsKnockedDown; // Can charge skills while stunned or knocked back
         public StatusEffectType CurrentPrimaryEffect => GetPrimaryStatusEffect();
 
         private void Awake()
@@ -188,14 +188,36 @@ namespace FairyGate.Combat
             switch (newEffect.type)
             {
                 case StatusEffectType.Stun:
-                    if (IsKnockedDown)
+                    if (IsKnockedDown || IsKnockedBack)
                     {
-                        // Cannot be stunned while knocked down
+                        // Cannot be stunned while knocked back or down
                         if (enableDebugLogs)
                         {
-                            Debug.Log($"{gameObject.name} cannot be stunned while knocked down");
+                            Debug.Log($"{gameObject.name} cannot be stunned while knocked back/down");
                         }
                         return;
+                    }
+                    break;
+
+                case StatusEffectType.Knockback:
+                    if (IsKnockedDown)
+                    {
+                        // Cannot be knocked back while knocked down (knockdown is higher priority)
+                        if (enableDebugLogs)
+                        {
+                            Debug.Log($"{gameObject.name} cannot be knocked back while knocked down");
+                        }
+                        return;
+                    }
+                    if (IsStunned)
+                    {
+                        // Knockback overrides stun, cancel stun effect
+                        RemoveStatusEffect(StatusEffectType.Stun);
+
+                        if (enableDebugLogs)
+                        {
+                            Debug.Log($"{gameObject.name} knockback overrides stun effect");
+                        }
                     }
                     break;
 
@@ -211,13 +233,23 @@ namespace FairyGate.Combat
                             Debug.Log($"{gameObject.name} knockdown overrides stun effect");
                         }
                     }
+                    if (IsKnockedBack)
+                    {
+                        // Knockdown overrides knockback, cancel knockback effect
+                        RemoveStatusEffect(StatusEffectType.Knockback);
+
+                        if (enableDebugLogs)
+                        {
+                            Debug.Log($"{gameObject.name} knockdown overrides knockback effect");
+                        }
+                    }
                     break;
             }
         }
 
         private StatusEffectType GetPrimaryStatusEffect()
         {
-            // Priority Order: Knockdown > Stun > Rest > None
+            // Priority Order: Knockdown > Knockback > Stun > Rest > None
             if (IsKnockedDown)
             {
                 if (HasStatusEffect(StatusEffectType.InteractionKnockdown))
@@ -226,6 +258,7 @@ namespace FairyGate.Combat
                     return StatusEffectType.MeterKnockdown;
             }
 
+            if (IsKnockedBack) return StatusEffectType.Knockback;
             if (IsStunned) return StatusEffectType.Stun;
             if (IsResting) return StatusEffectType.Rest;
 
@@ -268,29 +301,19 @@ namespace FairyGate.Combat
             }
         }
 
-        // GUI Debug Display
-        private void OnGUI()
-        {
-            if (showStatusEffectGUI && Application.isPlaying && activeStatusEffects.Any(e => e.isActive))
-            {
-                Vector3 screenPos = Camera.main.WorldToScreenPoint(transform.position + Vector3.up * 3f);
-                screenPos.y = Screen.height - screenPos.y;
-
-                string statusText = "";
-                foreach (var effect in activeStatusEffects.Where(e => e.isActive))
-                {
-                    statusText += $"{effect.type}: {effect.remainingTime:F1}s\n";
-                }
-
-                GUI.Label(new Rect(screenPos.x - 60, screenPos.y, 120, 80), statusText);
-            }
-        }
+        // OnGUI removed - now handled by CharacterInfoDisplay component
 
         // Helper methods for common status effects
         public void ApplyStun(float duration)
         {
             float modifiedDuration = DamageCalculator.CalculateStunDuration(duration, characterStats);
             ApplyStatusEffect(new StatusEffect(StatusEffectType.Stun, modifiedDuration));
+        }
+
+        public void ApplyKnockback(Vector3 displacement)
+        {
+            float duration = CombatConstants.KNOCKBACK_DURATION;
+            ApplyStatusEffect(new StatusEffect(StatusEffectType.Knockback, duration, displacement));
         }
 
         public void ApplyInteractionKnockdown()

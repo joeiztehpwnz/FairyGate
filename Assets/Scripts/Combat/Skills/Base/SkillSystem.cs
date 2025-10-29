@@ -20,6 +20,7 @@ namespace FairyGate.Combat
         [SerializeField] private KeyCode smashKey = KeyCode.Alpha4;
         [SerializeField] private KeyCode windmillKey = KeyCode.Alpha5;
         [SerializeField] private KeyCode rangedAttackKey = KeyCode.Alpha6;
+        [SerializeField] private KeyCode lungeKey = KeyCode.Alpha7;
         [SerializeField] private KeyCode cancelKey = KeyCode.Space;
 
         [Header("Debug")]
@@ -30,6 +31,7 @@ namespace FairyGate.Combat
         public event Action<SkillType> OnSkillCharged;
         public event Action<SkillType, bool> OnSkillExecuted; // skill, wasHit
         public event Action<SkillType> OnSkillCancelled;
+        public event Action<SkillType, SkillExecutionState> OnSkillStateChanged; // For UI/visual feedback
 
         // Component references
         private WeaponController weaponController;
@@ -43,11 +45,19 @@ namespace FairyGate.Combat
         private Coroutine currentSkillCoroutine;
         private bool canAct = true;
 
+        // Input buffering during CC
+        private SkillType? bufferedSkill = null;
+        private bool wasUnableToAct = false;
+
+        // Defense block tracking (one-hit block system)
+        private bool defenseBlockedHit = false;
+
         // Properties
         public SkillExecutionState CurrentState => currentState;
         public SkillType CurrentSkill => currentSkill;
         public float ChargeProgress => chargeProgress;
         public bool LastRangedAttackHit { get; private set; }
+        public bool HasDefenseBlockedHit => defenseBlockedHit;
 
         private void Awake()
         {
@@ -77,7 +87,24 @@ namespace FairyGate.Combat
         // Renamed from Update() to CombatUpdate() for centralized update management
         public void CombatUpdate(float deltaTime)
         {
-            if (!canAct) return;
+            // Check if in a "locked" state (CC or Active phase)
+            bool isLocked = !canAct || currentState == SkillExecutionState.Active;
+
+            // Detect locked state ending (transition from locked → free)
+            if (wasUnableToAct && !isLocked && bufferedSkill.HasValue)
+            {
+                ProcessBufferedSkill();
+            }
+
+            // Update locked state tracking for next frame
+            wasUnableToAct = isLocked;
+
+            if (isLocked)
+            {
+                // Can't act (CC'd or in Active phase) - buffer input instead
+                BufferSkillInput();
+                return;
+            }
 
             HandleSkillInput();
         }
@@ -149,11 +176,93 @@ namespace FairyGate.Combat
             }
         }
 
+        private void BufferSkillInput()
+        {
+            // Only process keyboard input for player-controlled characters
+            if (!isPlayerControlled) return;
+
+            // Detect skill input and buffer it
+            SkillType? inputSkill = GetSkillFromInput();
+            if (inputSkill.HasValue)
+            {
+                // Store buffered skill (replaces previous buffer if any)
+                bufferedSkill = inputSkill.Value;
+
+                if (enableDebugLogs)
+                {
+                    Debug.Log($"{gameObject.name} buffered skill: {bufferedSkill.Value} (during CC)");
+                }
+            }
+        }
+
+        private void ProcessBufferedSkill()
+        {
+            if (!bufferedSkill.HasValue) return;
+
+            SkillType skillToExecute = bufferedSkill.Value;
+            bufferedSkill = null; // Clear buffer
+
+            if (enableDebugLogs)
+            {
+                Debug.Log($"{gameObject.name} executing buffered skill: {skillToExecute}");
+            }
+
+            // Execute buffered skill based on type
+            if (skillToExecute == SkillType.Attack)
+            {
+                // Attack executes immediately
+                ExecuteSkill(SkillType.Attack);
+            }
+            else if (skillToExecute == SkillType.RangedAttack)
+            {
+                // RangedAttack enters aiming state
+                StartAiming(SkillType.RangedAttack);
+            }
+            else
+            {
+                // Other skills require charging
+                StartCharging(skillToExecute);
+            }
+        }
+
         public bool CanChargeSkill(SkillType skillType)
         {
             if (!combatController.IsInCombat) return false;
             if (!canAct) return false;
             if (currentState != SkillExecutionState.Uncharged && currentState != SkillExecutionState.Charged) return false;
+
+            // LUNGE RANGE CHECK: Must be in mid-range sweet spot (2.0-4.0 units)
+            if (skillType == SkillType.Lunge)
+            {
+                if (combatController.CurrentTarget == null)
+                {
+                    if (enableDebugLogs)
+                    {
+                        Debug.Log($"{gameObject.name} cannot lunge: no target");
+                    }
+                    return false;
+                }
+
+                float distance = Vector3.Distance(transform.position, combatController.CurrentTarget.position);
+
+                if (distance < CombatConstants.LUNGE_MIN_RANGE)
+                {
+                    if (enableDebugLogs)
+                    {
+                        Debug.Log($"{gameObject.name} too close for Lunge ({distance:F1} < {CombatConstants.LUNGE_MIN_RANGE})");
+                    }
+                    return false;
+                }
+
+                if (distance > CombatConstants.LUNGE_MAX_RANGE)
+                {
+                    if (enableDebugLogs)
+                    {
+                        Debug.Log($"{gameObject.name} too far for Lunge ({distance:F1} > {CombatConstants.LUNGE_MAX_RANGE})");
+                    }
+                    return false;
+                }
+            }
 
             // Check stamina requirements
             int requiredStamina = GetSkillStaminaCost(skillType);
@@ -189,6 +298,15 @@ namespace FairyGate.Combat
             return staminaSystem.HasStaminaFor(requiredStamina);
         }
 
+        private void SetState(SkillExecutionState newState)
+        {
+            if (currentState != newState)
+            {
+                currentState = newState;
+                OnSkillStateChanged?.Invoke(currentSkill, currentState);
+            }
+        }
+
         public void StartCharging(SkillType skillType)
         {
             if (!CanChargeSkill(skillType))
@@ -207,8 +325,14 @@ namespace FairyGate.Combat
             }
 
             currentSkill = skillType;
-            currentState = SkillExecutionState.Charging;
+            SetState(SkillExecutionState.Charging);
             chargeProgress = 0f;
+
+            // Reset Defense block flag when charging Defense
+            if (skillType == SkillType.Defense)
+            {
+                defenseBlockedHit = false;
+            }
 
             if (enableDebugLogs)
             {
@@ -282,7 +406,7 @@ namespace FairyGate.Combat
             }
 
             // Reset skill state
-            currentState = SkillExecutionState.Uncharged;
+            SetState(SkillExecutionState.Uncharged);
             chargeProgress = 0f;
 
             // Reset movement restrictions
@@ -336,7 +460,7 @@ namespace FairyGate.Combat
             }
 
             currentSkill = skillType;
-            currentState = SkillExecutionState.Aiming;
+            SetState(SkillExecutionState.Aiming);
 
             // Start accuracy tracking
             if (accuracySystem != null)
@@ -359,7 +483,7 @@ namespace FairyGate.Combat
             if (accuracySystem != null)
                 accuracySystem.StopAiming();
 
-            currentState = SkillExecutionState.Uncharged;
+            SetState(SkillExecutionState.Uncharged);
             currentSkill = SkillType.Attack;
             movementController.SetMovementModifier(1f);
         }
@@ -385,7 +509,7 @@ namespace FairyGate.Combat
             }
 
             // Skill fully charged
-            currentState = SkillExecutionState.Charged;
+            SetState(SkillExecutionState.Charged);
             chargeProgress = 1f;
 
             // Apply movement restrictions for charged state
@@ -417,14 +541,14 @@ namespace FairyGate.Combat
 
             // STANDARD FLOW FOR OTHER SKILLS
             // Startup phase
-            currentState = SkillExecutionState.Startup;
+            SetState(SkillExecutionState.Startup);
             movementController.ApplySkillMovementRestriction(skillType, currentState);
 
             float startupTime = SpeedResolver.CalculateExecutionTime(skillType, weaponController.WeaponData, SkillExecutionState.Startup);
             yield return new WaitForSeconds(startupTime);
 
             // Active phase (uncancellable)
-            currentState = SkillExecutionState.Active;
+            SetState(SkillExecutionState.Active);
             movementController.ApplySkillMovementRestriction(skillType, currentState);
 
             // Process skill effect during active phase
@@ -435,7 +559,7 @@ namespace FairyGate.Combat
             // Handle waiting state for defensive skills
             if (IsDefensiveSkill(skillType))
             {
-                currentState = SkillExecutionState.Waiting;
+                SetState(SkillExecutionState.Waiting);
                 movementController.ApplySkillMovementRestriction(skillType, currentState);
 
                 // Defensive skills enter waiting state
@@ -448,14 +572,14 @@ namespace FairyGate.Combat
             }
 
             // Recovery phase
-            currentState = SkillExecutionState.Recovery;
+            SetState(SkillExecutionState.Recovery);
             movementController.ApplySkillMovementRestriction(skillType, currentState);
 
             float recoveryTime = SpeedResolver.CalculateExecutionTime(skillType, weaponController.WeaponData, SkillExecutionState.Recovery);
             yield return new WaitForSeconds(recoveryTime);
 
             // Skill complete
-            currentState = SkillExecutionState.Uncharged;
+            SetState(SkillExecutionState.Uncharged);
             currentSkill = SkillType.Attack; // Reset to default
             chargeProgress = 0f;
 
@@ -513,7 +637,7 @@ namespace FairyGate.Combat
             }
 
             // Enter Active state (brief, for interaction processing)
-            currentState = SkillExecutionState.Active;
+            SetState(SkillExecutionState.Active);
             movementController.SetMovementModifier(0f);
 
             // Roll hit chance
@@ -554,7 +678,7 @@ namespace FairyGate.Combat
             yield return new WaitForSeconds(0.1f);
 
             // Recovery phase
-            currentState = SkillExecutionState.Recovery;
+            SetState(SkillExecutionState.Recovery);
             movementController.SetMovementModifier(0f);
 
             float recoveryTime = CombatConstants.RANGED_ATTACK_RECOVERY_TIME;
@@ -568,7 +692,7 @@ namespace FairyGate.Combat
             yield return new WaitForSeconds(recoveryTime);
 
             // Skill complete
-            currentState = SkillExecutionState.Uncharged;
+            SetState(SkillExecutionState.Uncharged);
             currentSkill = SkillType.Attack;
             chargeProgress = 0f;
             movementController.SetMovementModifier(1f);
@@ -599,7 +723,33 @@ namespace FairyGate.Combat
 
         private bool ProcessSkillExecution(SkillType skillType)
         {
-            // Check range for offensive skills
+            // LUNGE: Perform dash movement toward target
+            if (skillType == SkillType.Lunge)
+            {
+                if (combatController.CurrentTarget != null)
+                {
+                    Vector3 dashDirection = (combatController.CurrentTarget.position - transform.position).normalized;
+                    dashDirection.y = 0f; // Keep horizontal
+
+                    var characterController = GetComponent<CharacterController>();
+                    if (characterController != null)
+                    {
+                        Vector3 dashMovement = dashDirection * CombatConstants.LUNGE_DASH_DISTANCE;
+                        characterController.Move(dashMovement);
+
+                        if (enableDebugLogs)
+                        {
+                            Debug.Log($"{gameObject.name} lunged forward {CombatConstants.LUNGE_DASH_DISTANCE} units toward {combatController.CurrentTarget.name}");
+                        }
+                    }
+                }
+
+                // Trigger combat interaction (damage handled by CombatInteractionManager)
+                CombatInteractionManager.Instance?.ProcessSkillExecution(this, skillType);
+                return true;
+            }
+
+            // Check range for other offensive skills
             if (SpeedResolver.IsOffensiveSkill(skillType))
             {
                 if (combatController.CurrentTarget == null)
@@ -673,6 +823,12 @@ namespace FairyGate.Combat
 
         private float CalculateChargeTime(SkillType skillType)
         {
+            // Lunge has custom charge time
+            if (skillType == SkillType.Lunge)
+            {
+                return CombatConstants.LUNGE_CHARGE_TIME;
+            }
+
             float baseChargeTime = CombatConstants.BASE_SKILL_CHARGE_TIME;
             float modifiedTime = baseChargeTime / (1 + characterStats.dexterity / 10f);
             return modifiedTime;
@@ -688,6 +844,7 @@ namespace FairyGate.Combat
                 SkillType.Smash => CombatConstants.SMASH_STAMINA_COST,
                 SkillType.Windmill => CombatConstants.WINDMILL_STAMINA_COST,
                 SkillType.RangedAttack => CombatConstants.RANGED_ATTACK_STAMINA_COST,
+                SkillType.Lunge => CombatConstants.LUNGE_STAMINA_COST,
                 _ => 0
             };
         }
@@ -700,6 +857,7 @@ namespace FairyGate.Combat
             if (Input.GetKeyDown(smashKey)) return SkillType.Smash;
             if (Input.GetKeyDown(windmillKey)) return SkillType.Windmill;
             if (Input.GetKeyDown(rangedAttackKey)) return SkillType.RangedAttack;
+            if (Input.GetKeyDown(lungeKey)) return SkillType.Lunge;
             return null;
         }
 
@@ -713,6 +871,7 @@ namespace FairyGate.Combat
                 SkillType.Smash => smashKey,
                 SkillType.Windmill => windmillKey,
                 SkillType.RangedAttack => rangedAttackKey,
+                SkillType.Lunge => lungeKey,
                 _ => KeyCode.None
             };
         }
@@ -733,11 +892,20 @@ namespace FairyGate.Combat
             }
         }
 
+        public void MarkDefenseBlocked()
+        {
+            defenseBlockedHit = true;
+            if (enableDebugLogs)
+            {
+                Debug.Log($"{gameObject.name} Defense marked as having blocked a hit");
+            }
+        }
+
         public void ForceTransitionToRecovery()
         {
             if (currentState == SkillExecutionState.Waiting)
             {
-                currentState = SkillExecutionState.Recovery;
+                SetState(SkillExecutionState.Recovery);
                 movementController.ApplySkillMovementRestriction(currentSkill, currentState);
             }
         }

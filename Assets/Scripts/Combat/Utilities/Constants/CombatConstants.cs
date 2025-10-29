@@ -7,19 +7,23 @@ namespace FairyGate.Combat
         // Base Values
         public const int BASE_HEALTH = 100;
         public const int BASE_STAMINA = 100;
-        public const float BASE_MOVEMENT_SPEED = 5.0f;
+        public const float BASE_MOVEMENT_SPEED = 3.0f;
         public const float BASE_SKILL_CHARGE_TIME = 2.0f;
+        public const float WEAPON_RANGE_MULTIPLIER = 1.25f;
 
         // Knockdown System
         public const int ATTACK_KNOCKDOWN_BUILDUP = 15;
         public const float KNOCKDOWN_METER_DECAY_RATE = -5f; // per second
+        public const float KNOCKBACK_METER_THRESHOLD = 50f;
         public const float KNOCKDOWN_METER_THRESHOLD = 100f;
+        public const float KNOCKBACK_DURATION = 0.8f;
         public const float KNOCKDOWN_DURATION = 2.0f;
 
         // Knockback Distances
         public const float COUNTER_KNOCKBACK_DISTANCE = 1.5f;
         public const float SMASH_KNOCKBACK_DISTANCE = 2.0f;
         public const float WINDMILL_KNOCKBACK_DISTANCE = 1.8f;
+        public const float KNOCKBACK_DISPLACEMENT_DISTANCE = 0.8f;
         public const float METER_KNOCKBACK_DISTANCE = 1.2f;
 
         // Damage Reduction
@@ -48,6 +52,19 @@ namespace FairyGate.Combat
         public const int WINDMILL_STAMINA_COST = 3;
         public const int DEFENSE_STAMINA_COST = 3;
         public const int COUNTER_STAMINA_COST = 5;
+        public const int LUNGE_STAMINA_COST = 4;
+
+        // Defense Block System
+        public const float DEFENSE_BLOCK_RECOVERY_TIME = 0.5f;
+
+        // Lunge Skill Constants
+        public const float LUNGE_CHARGE_TIME = 1.5f;
+        public const float LUNGE_DASH_DISTANCE = 2.0f;
+        public const float LUNGE_MIN_RANGE = 2.0f;      // Can't lunge if closer
+        public const float LUNGE_MAX_RANGE = 4.0f;      // Can't lunge if farther
+        public const float LUNGE_STARTUP_TIME = 0.1f;
+        public const float LUNGE_ACTIVE_TIME = 0.15f;   // Fast dash (vulnerable but quick)
+        public const float LUNGE_RECOVERY_TIME = 0.2f;
 
         // Stamina Drain Rates (per second)
         public const float DEFENSE_STAMINA_DRAIN = 3f;

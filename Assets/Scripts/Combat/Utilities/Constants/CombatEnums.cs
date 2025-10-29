@@ -7,6 +7,7 @@ namespace FairyGate.Combat
         Charging,       // Charging a skill
         Executing,      // Skill in startup/active/recovery frames
         Stunned,        // Cannot move, can charge skills
+        Knockback,      // Pushed back, brief freeze, can charge skills
         KnockedDown,    // Cannot move or act
         Resting,        // X key rest state, stamina regeneration
         Dead            // Character defeated
@@ -19,7 +20,8 @@ namespace FairyGate.Combat
         Counter,
         Smash,
         Windmill,
-        RangedAttack
+        RangedAttack,
+        Lunge           // Gap-closing dash attack
     }
 
     public enum SkillExecutionState
@@ -38,6 +40,7 @@ namespace FairyGate.Combat
     {
         None,
         Stun,
+        Knockback,              // From knockdown meter reaching 50%
         InteractionKnockdown,   // From skill interactions
         MeterKnockdown,         // From knockdown meter reaching 100%
         Block,

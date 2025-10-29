@@ -43,7 +43,7 @@ namespace FairyGate.Combat
                     return new ArchetypeData
                     {
                         stats = CharacterStats.CreateGuardianStats(),
-                        aiType = "KnightAI",   // Uses defensive patterns
+                        aiType = "SimpleTestAI",   // Reactive AI with defensive personality
                         attackWeight = 15f,
                         defenseWeight = 45f,   // Very defensive
                         counterWeight = 25f,   // Counter-heavy
@@ -56,7 +56,7 @@ namespace FairyGate.Combat
                     return new ArchetypeData
                     {
                         stats = CharacterStats.CreateAssassinStats(),
-                        aiType = "PatternedAI",
+                        aiType = "SimpleTestAI",   // Reactive AI with counter-focused personality
                         attackWeight = 25f,
                         defenseWeight = 20f,
                         counterWeight = 35f,   // Counter master
@@ -69,15 +69,15 @@ namespace FairyGate.Combat
                     return new ArchetypeData
                     {
                         stats = CharacterStats.CreateArcherStats(),
-                        aiType = "TestRepeaterAI",
+                        aiType = "SimpleTestAI",   // Reactive AI (special fields unused but harmless)
                         attackWeight = 10f,
                         defenseWeight = 15f,
                         counterWeight = 15f,
                         smashWeight = 5f,
                         windmillWeight = 5f,
                         skillCooldown = 2.0f,
-                        enableMovement = true,     // Kites away
-                        repeaterSkill = SkillType.RangedAttack
+                        enableMovement = true,     // Unused by SimpleTestAI
+                        repeaterSkill = SkillType.RangedAttack  // Unused by SimpleTestAI
                     };
 
                 case EnemyArchetype.Soldier:

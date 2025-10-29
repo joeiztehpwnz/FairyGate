@@ -11,6 +11,10 @@ namespace FairyGate.Combat
         [SerializeField] private bool canMove = true;
         [SerializeField] private bool isPlayerControlled = true;
 
+        [Header("Camera")]
+        [SerializeField] private Transform cameraTransform;
+        [SerializeField] private bool useCameraRelativeMovement = true;
+
         [Header("Input")]
         [SerializeField] private KeyCode forwardKey = KeyCode.W;
         [SerializeField] private KeyCode backwardKey = KeyCode.S;
@@ -50,6 +54,26 @@ namespace FairyGate.Combat
             CombatUpdateManager.Register(this);
         }
 
+        private void Start()
+        {
+            // Auto-find camera if not assigned and player controlled
+            if (isPlayerControlled && cameraTransform == null && useCameraRelativeMovement)
+            {
+                if (Camera.main != null)
+                {
+                    cameraTransform = Camera.main.transform;
+                    if (enableDebugLogs)
+                    {
+                        Debug.Log($"{gameObject.name} MovementController found main camera for camera-relative movement");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"{gameObject.name} MovementController: Camera-relative movement enabled but no camera found");
+                }
+            }
+        }
+
         private void OnDestroy()
         {
             // Unregister to prevent memory leaks
@@ -76,19 +100,42 @@ namespace FairyGate.Combat
             // Get input based on control type
             if (isPlayerControlled)
             {
-                // Player keyboard input
+                // Player keyboard input - get raw input direction
+                Vector3 inputDirection = Vector3.zero;
+
                 if (Input.GetKey(forwardKey))
-                    moveDirection += Vector3.forward;
+                    inputDirection += Vector3.forward;
                 if (Input.GetKey(backwardKey))
-                    moveDirection += Vector3.back;
+                    inputDirection += Vector3.back;
                 if (Input.GetKey(leftKey))
-                    moveDirection += Vector3.left;
+                    inputDirection += Vector3.left;
                 if (Input.GetKey(rightKey))
-                    moveDirection += Vector3.right;
+                    inputDirection += Vector3.right;
+
+                // Transform input direction based on camera orientation
+                if (useCameraRelativeMovement && cameraTransform != null && inputDirection != Vector3.zero)
+                {
+                    // Get camera's forward and right directions (flatten to horizontal plane)
+                    Vector3 cameraForward = cameraTransform.forward;
+                    cameraForward.y = 0f;
+                    cameraForward.Normalize();
+
+                    Vector3 cameraRight = cameraTransform.right;
+                    cameraRight.y = 0f;
+                    cameraRight.Normalize();
+
+                    // Calculate camera-relative movement direction
+                    moveDirection = cameraForward * inputDirection.z + cameraRight * inputDirection.x;
+                }
+                else
+                {
+                    // Use world-space movement
+                    moveDirection = inputDirection;
+                }
             }
             else
             {
-                // AI programmatic input
+                // AI programmatic input (always world-space)
                 moveDirection = aiMovementInput;
             }
 

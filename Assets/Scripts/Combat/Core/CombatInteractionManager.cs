@@ -339,6 +339,14 @@ namespace FairyGate.Combat
                         case SkillType.Counter: return InteractionResult.CounterIneffective; // RangedAttack vs Counter → Counter is ineffective
                     }
                     break;
+
+                case SkillType.Lunge:
+                    switch (defensive)
+                    {
+                        case SkillType.Defense: return InteractionResult.AttackerStunned; // Lunge vs Defense → Attacker stunned, defender blocks
+                        case SkillType.Counter: return InteractionResult.CounterReflection; // Lunge vs Counter → Counter reflection
+                    }
+                    break;
             }
 
             return InteractionResult.NoInteraction;
@@ -372,11 +380,16 @@ namespace FairyGate.Combat
                     // Attacker stunned, defender blocks (0 damage)
                     attackerStatusEffects.ApplyStun(attackerWeapon.stunDuration);
                     defenderStatusEffects.ApplyStun(attackerWeapon.stunDuration * 0.5f); // Defender receives half stun
+
+                    // ONE-HIT BLOCK: Defense breaks after blocking first hit
+                    defender.skillSystem.MarkDefenseBlocked();
+
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{attacker.combatant.name} attack blocked by {defender.combatant.name} defense");
+                        Debug.Log($"{attacker.combatant.name} attack blocked by {defender.combatant.name} defense (Defense broken after block)");
                     }
-                    // Complete defensive skill
+
+                    // Defense breaks immediately after blocking
                     CompleteDefensiveSkillExecution(defender);
                     break;
 
@@ -387,6 +400,8 @@ namespace FairyGate.Combat
                     attackerStatusEffects.ApplyInteractionKnockdown(counterDisplacement);
                     int reflectedDamage = DamageCalculator.CalculateCounterReflection(attackerStats, attackerWeapon);
                     attackerHealth.TakeDamage(reflectedDamage, defender.combatant.transform);
+                    // Note: Counter knockdown overrides stun, but stun should technically be applied first
+                    // The knockdown from counter is stronger, so the stun effect is immediately overridden
                     if (enableDebugLogs)
                     {
                         Debug.Log($"{defender.combatant.name} counter reflected {reflectedDamage} damage to {attacker.combatant.name}");
@@ -405,6 +420,12 @@ namespace FairyGate.Combat
                         // HIT: Defender takes full damage, no reflection
                         int rangedDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats);
                         defenderHealth.TakeDamage(rangedDamage, attacker.combatant.transform);
+
+                        // Apply universal hit stun
+                        defenderStatusEffects.ApplyStun(attackerWeapon.stunDuration);
+
+                        // Build knockdown meter
+                        defenderKnockdownMeter.AddMeterBuildup(rangedDamage, attackerStats, attacker.combatant.transform);
 
                         if (enableDebugLogs)
                         {
@@ -452,12 +473,15 @@ namespace FairyGate.Combat
                         if (rangedAttackHit)
                         {
                             // HIT: Defense blocks 100% of ranged attack damage (complete block)
+                            // ONE-HIT BLOCK: Defense breaks after blocking first hit
+                            defender.skillSystem.MarkDefenseBlocked();
+
                             if (enableDebugLogs)
                             {
-                                Debug.Log($"{defender.combatant.name} completely blocked {attacker.combatant.name} RangedAttack (0 damage)");
+                                Debug.Log($"{defender.combatant.name} completely blocked {attacker.combatant.name} RangedAttack (Defense broken after block)");
                             }
 
-                            // Complete Defense (successfully blocked a hit)
+                            // Defense breaks immediately after blocking
                             CompleteDefensiveSkillExecution(defender);
                         }
                         else
@@ -474,11 +498,15 @@ namespace FairyGate.Combat
                     else
                     {
                         // Windmill vs Defense: Blocked cleanly (0 damage)
+                        // ONE-HIT BLOCK: Defense breaks after blocking first hit
+                        defender.skillSystem.MarkDefenseBlocked();
+
                         if (enableDebugLogs)
                         {
-                            Debug.Log($"{defender.combatant.name} blocked {attacker.combatant.name} windmill cleanly");
+                            Debug.Log($"{defender.combatant.name} blocked {attacker.combatant.name} windmill (Defense broken after block)");
                         }
-                        // Complete defensive skill
+
+                        // Defense breaks immediately after blocking
                         CompleteDefensiveSkillExecution(defender);
                     }
                     break;
@@ -547,18 +575,23 @@ namespace FairyGate.Combat
             int damage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, targetStats);
             targetHealth.TakeDamage(damage, execution.combatant.transform);
 
-            // Apply status effects based on skill type
+            // UNIVERSAL: All hits apply stun (Mabinogi three-tier CC system)
+            targetStatusEffects.ApplyStun(attackerWeapon.stunDuration);
+
+            // Apply skill-specific effects
             switch (execution.skillType)
             {
                 case SkillType.Attack:
-                    // Apply stun and knockdown meter buildup
-                    targetStatusEffects.ApplyStun(attackerWeapon.stunDuration);
+                case SkillType.RangedAttack:
+                case SkillType.Lunge:
+                    // Build knockdown meter (stun already applied above)
                     targetKnockdownMeter.AddMeterBuildup(damage, attackerStats, execution.combatant.transform);
                     break;
 
                 case SkillType.Smash:
                 case SkillType.Windmill:
                     // Immediate knockdown with displacement (bypasses meter system)
+                    // Stun is overridden by knockdown effect
                     Vector3 directHitDirection = (target.transform.position - execution.combatant.transform.position).normalized;
                     Vector3 directHitDisplacement = directHitDirection * (execution.skillType == SkillType.Smash
                         ? CombatConstants.SMASH_KNOCKBACK_DISTANCE

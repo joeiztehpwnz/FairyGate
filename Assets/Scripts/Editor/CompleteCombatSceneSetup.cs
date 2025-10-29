@@ -82,14 +82,10 @@ namespace FairyGate.Combat.Editor
 
             EditorUtility.DisplayProgressBar("Testing Sandbox Setup", "Creating Enemy...", 0.6f);
 
-            // 5. Create Enemy with TestRepeaterAI
+            // 5. Create Enemy with SimpleTestAI
             var enemy = CreateFullCharacter("Enemy", new Vector3(3, 0, 0), enemyStats, mace, true);
 
-            // Replace default AI with TestRepeaterAI
-            var simpleAI = enemy.GetComponent<SimpleTestAI>();
-            if (simpleAI != null) DestroyImmediate(simpleAI);
-
-            enemy.AddComponent<TestRepeaterAI>();
+            // Enemy already has SimpleTestAI from CreateFullCharacter
             AddEquipmentManager(enemy);
 
             EditorUtility.DisplayProgressBar("Testing Sandbox Setup", "Creating UI System...", 0.7f);
@@ -112,16 +108,11 @@ namespace FairyGate.Combat.Editor
             Debug.Log("");
             Debug.Log("🎮 PLAYER CONTROLS:");
             Debug.Log("  • WASD - Movement");
+            Debug.Log("  • Arrow Keys - Camera (Left/Right: Rotate, Up/Down: Zoom)");
             Debug.Log("  • 1 - Attack | 2 - Defense | 3 - Counter");
             Debug.Log("  • 4 - Smash | 5 - Windmill | 6 - Ranged Attack");
             Debug.Log("  • Space - Cancel Skill | X - Rest (Stamina Regen)");
             Debug.Log("  • Tab - Cycle Target | Esc - Exit Combat | R - Reset Combat");
-            Debug.Log("");
-            Debug.Log("🔧 TESTING HOTKEYS:");
-            Debug.Log("  • F1-F6 - Force Enemy Skill (Attack/Defense/Counter/Smash/Windmill/Ranged)");
-            Debug.Log("  • [ or PgUp - Previous Equipment Set | ] or PgDn - Next Equipment Set");
-            Debug.Log("  • \\ or Home - Remove All Equipment");
-            Debug.Log("  • F12 - Reset Enemy AI to default");
             Debug.Log("");
             Debug.Log("📦 EQUIPMENT SETS AVAILABLE:");
             Debug.Log("  • Fortress (Tank) - High HP/Defense, Low Speed");
@@ -130,14 +121,10 @@ namespace FairyGate.Combat.Editor
             Debug.Log("  • Berserker (Glass Cannon) - High Strength, Low Defense");
             Debug.Log("");
             Debug.Log("🤖 ENEMY AI:");
-            Debug.Log("  • TestRepeaterAI - Cycles through all skills systematically");
-            Debug.Log("  • Use F1-F6 to override and test specific skill interactions");
+            Debug.Log("  • SimpleTestAI - Reactive AI with weighted skill selection");
             Debug.Log("");
             Debug.Log("📊 UI FEATURES:");
             Debug.Log("  • Health/Stamina bars for Player and Enemy");
-            Debug.Log("  • On-screen debug visualizers showing combat state");
-            Debug.Log("  • Equipment selector ([ ] brackets or PgUp/PgDn)");
-            Debug.Log("  • Skill selector (F1-F6)");
             Debug.Log("");
             Debug.Log("═══════════════════════════════════════════════════════════");
 
@@ -214,7 +201,7 @@ namespace FairyGate.Combat.Editor
                 var camera = cameraGO.AddComponent<Camera>();
                 cameraGO.tag = "MainCamera";
 
-                // Position for good combat view
+                // Position for good combat view (will be overridden by CameraController)
                 cameraGO.transform.position = new Vector3(0f, 10f, -8f);
                 cameraGO.transform.rotation = Quaternion.Euler(50f, 0f, 0f);
 
@@ -223,7 +210,16 @@ namespace FairyGate.Combat.Editor
                 camera.farClipPlane = 100f;
                 camera.clearFlags = CameraClearFlags.Skybox;
 
-                Debug.Log("✅ Created Main Camera");
+                // Add CameraController for player following
+                var cameraController = cameraGO.AddComponent<CameraController>();
+                SetSerializedProperty(cameraController, "autoFindPlayer", true);
+                SetSerializedProperty(cameraController, "distance", 10f);
+                SetSerializedProperty(cameraController, "height", 8f);
+                SetSerializedProperty(cameraController, "rotationSpeed", 90f);
+                SetSerializedProperty(cameraController, "enableZoom", true);
+                SetSerializedProperty(cameraController, "showDebugInfo", true);
+
+                Debug.Log("✅ Created Main Camera with CameraController");
             }
 
             // Directional Light
@@ -347,12 +343,11 @@ namespace FairyGate.Combat.Editor
             var movementController = character.AddComponent<MovementController>();
             var knockdownMeter = character.AddComponent<KnockdownMeterTracker>();
             var accuracySystem = character.AddComponent<AccuracySystem>();
-            var debugVisualizer = character.AddComponent<CombatDebugVisualizer>();
 
             // Add AI for enemy
             if (isEnemy)
             {
-                character.AddComponent<SimpleTestAI>(); // Will be replaced with TestRepeaterAI
+                character.AddComponent<SimpleTestAI>();
             }
 
             // Configure components using SerializedObject
@@ -428,20 +423,6 @@ namespace FairyGate.Combat.Editor
                 Debug.LogWarning($"⚠️ No equipment sets found in Assets/Data/Equipment/Sets/");
             }
 
-            // Add TestEquipmentSelector for F10/F11 hotkeys
-            var testEquipmentSelector = character.AddComponent<TestEquipmentSelector>();
-
-            // Configure TestEquipmentSelector with the same equipment sets
-            if (equipmentSetsArray != null && equipmentSetsArray.Length > 0)
-            {
-                SetSerializedProperty(testEquipmentSelector, "equipmentPresets", equipmentSetsArray);
-                SetSerializedProperty(testEquipmentSelector, "autoFindTargetEnemy", false);
-                SetSerializedProperty(testEquipmentSelector, "targetEquipmentManager", equipmentManager);
-                SetSerializedProperty(testEquipmentSelector, "enableDebugLogs", true);
-
-                Debug.Log($"✅ Configured TestEquipmentSelector with {equipmentSetsArray.Length} presets for {character.name}");
-            }
-
             SetSerializedProperty(equipmentManager, "enableDebugLogs", true);
             Debug.Log($"✅ Added EquipmentManager to {character.name}");
         }
@@ -482,10 +463,7 @@ namespace FairyGate.Combat.Editor
             // Create UI Manager GameObject
             var uiManagerGO = new GameObject("TestingUI_Manager");
 
-            // Add TestSkillSelector (F1-F6 hotkeys)
-            uiManagerGO.AddComponent<TestSkillSelector>();
-
-            Debug.Log("✅ Created Testing UI (Skill Selector with F1-F6 hotkeys)");
+            Debug.Log("✅ Created Testing UI");
         }
 
         #endregion
@@ -541,40 +519,6 @@ namespace FairyGate.Combat.Editor
         #endregion
 
         #region Additional Menu Items
-
-        [MenuItem("Combat/Complete Scene Setup/Quick 1v1 Setup")]
-        public static void QuickOneVsOneSetup()
-        {
-            if (EditorUtility.DisplayDialog("Quick 1v1 Setup",
-                "Create a simple 1v1 combat scene with minimal UI?",
-                "Create", "Cancel"))
-            {
-                PerformQuick1v1Setup();
-            }
-        }
-
-        private static void PerformQuick1v1Setup()
-        {
-            CreateManagers();
-            CreateEnvironment();
-
-            var playerStats = CreateOrLoadCharacterStats("Player_Stats", 10, 8, 6, 8, 5, 4, 12);
-            var enemyStats = CreateOrLoadCharacterStats("Enemy_Stats", 12, 6, 5, 6, 6, 5, 10);
-            var sword = CreateOrLoadWeaponData("Sword", WeaponType.Sword);
-
-            var player = CreateFullCharacter("Player", new Vector3(-3, 0, 0), playerStats, sword, false);
-            var enemy = CreateFullCharacter("Enemy", new Vector3(3, 0, 0), enemyStats, sword, true);
-
-            // Use KnightAI for pattern-based combat
-            var simpleAI = enemy.GetComponent<SimpleTestAI>();
-            if (simpleAI != null) DestroyImmediate(simpleAI);
-            enemy.AddComponent<KnightAI>();
-
-            SetupCombatTargeting(player, enemy);
-
-            Debug.Log("✅ Quick 1v1 Setup Complete! Player vs KnightAI");
-            Selection.activeGameObject = player;
-        }
 
         [MenuItem("Combat/Complete Scene Setup/Clear All Combat Objects")]
         public static void ClearAllCombatObjects()
@@ -633,49 +577,16 @@ namespace FairyGate.Combat.Editor
             string enemyName = $"{archetype}_{enemySpawnCount}";
             var enemy = CreateFullCharacter(enemyName, spawnPos, config.stats, weapon, true);
 
-            // Remove default AI and add configured AI
+            // Configure SimpleTestAI with archetype-specific weights
             var simpleAI = enemy.GetComponent<SimpleTestAI>();
-            if (simpleAI != null) DestroyImmediate(simpleAI);
-
-            var knightAI = enemy.GetComponent<KnightAI>();
-            if (knightAI != null) DestroyImmediate(knightAI);
-
-            var patternedAI = enemy.GetComponent<PatternedAI>();
-            if (patternedAI != null) DestroyImmediate(patternedAI);
-
-            // Add appropriate AI based on configuration
-            switch (config.aiType)
+            if (simpleAI != null)
             {
-                case "SimpleTestAI":
-                    var simpleTestAI = enemy.AddComponent<SimpleTestAI>();
-                    SetSerializedProperty(simpleTestAI, "attackWeight", config.attackWeight);
-                    SetSerializedProperty(simpleTestAI, "defenseWeight", config.defenseWeight);
-                    SetSerializedProperty(simpleTestAI, "counterWeight", config.counterWeight);
-                    SetSerializedProperty(simpleTestAI, "smashWeight", config.smashWeight);
-                    SetSerializedProperty(simpleTestAI, "windmillWeight", config.windmillWeight);
-                    SetSerializedProperty(simpleTestAI, "skillCooldown", config.skillCooldown);
-                    break;
-
-                case "KnightAI":
-                    var knightTestAI = enemy.AddComponent<KnightAI>();
-                    SetSerializedProperty(knightTestAI, "attackWeight", config.attackWeight);
-                    SetSerializedProperty(knightTestAI, "defenseWeight", config.defenseWeight);
-                    SetSerializedProperty(knightTestAI, "counterWeight", config.counterWeight);
-                    SetSerializedProperty(knightTestAI, "smashWeight", config.smashWeight);
-                    SetSerializedProperty(knightTestAI, "windmillWeight", config.windmillWeight);
-                    break;
-
-                case "PatternedAI":
-                    var patternTestAI = enemy.AddComponent<PatternedAI>();
-                    // PatternedAI uses its own pattern system, weights set internally
-                    break;
-
-                case "TestRepeaterAI":
-                    var repeaterAI = enemy.AddComponent<TestRepeaterAI>();
-                    SetSerializedProperty(repeaterAI, "selectedSkill", config.repeaterSkill);
-                    SetSerializedProperty(repeaterAI, "enableMovement", config.enableMovement);
-                    SetSerializedProperty(repeaterAI, "repeatDelay", config.skillCooldown);
-                    break;
+                SetSerializedProperty(simpleAI, "attackWeight", config.attackWeight);
+                SetSerializedProperty(simpleAI, "defenseWeight", config.defenseWeight);
+                SetSerializedProperty(simpleAI, "counterWeight", config.counterWeight);
+                SetSerializedProperty(simpleAI, "smashWeight", config.smashWeight);
+                SetSerializedProperty(simpleAI, "windmillWeight", config.windmillWeight);
+                SetSerializedProperty(simpleAI, "skillCooldown", config.skillCooldown);
             }
 
             // Add equipment manager
@@ -691,7 +602,7 @@ namespace FairyGate.Combat.Editor
             Debug.Log($"✅ Spawned {archetype} enemy at {spawnPos}");
             Debug.Log($"   Stats: STR={config.stats.strength} DEX={config.stats.dexterity} VIT={config.stats.vitality} " +
                       $"DEF={config.stats.physicalDefense} FOCUS={config.stats.focus}");
-            Debug.Log($"   AI: {config.aiType}");
+            Debug.Log($"   AI: SimpleTestAI with {archetype} weights");
         }
 
         #endregion

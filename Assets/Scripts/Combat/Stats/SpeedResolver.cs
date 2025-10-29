@@ -12,14 +12,16 @@ namespace FairyGate.Combat
         }
 
         public static SpeedResolutionResult ResolveSpeedConflict(
-            ICombatant combatant1, ICombatant combatant2,
+            Transform combatant1Transform, Transform combatant2Transform,
             SkillType skill1, SkillType skill2)
         {
-            var weapon1 = combatant1.Transform.GetComponent<WeaponController>()?.WeaponData;
-            var weapon2 = combatant2.Transform.GetComponent<WeaponController>()?.WeaponData;
+            var weapon1 = combatant1Transform.GetComponent<WeaponController>()?.WeaponData;
+            var weapon2 = combatant2Transform.GetComponent<WeaponController>()?.WeaponData;
+            var stats1 = combatant1Transform.GetComponent<CombatController>()?.Stats;
+            var stats2 = combatant2Transform.GetComponent<CombatController>()?.Stats;
 
-            float speed1 = weapon1 != null ? CalculateSpeed(skill1, combatant1.Stats, weapon1) : 0f;
-            float speed2 = weapon2 != null ? CalculateSpeed(skill2, combatant2.Stats, weapon2) : 0f;
+            float speed1 = (weapon1 != null && stats1 != null) ? CalculateSpeed(skill1, stats1, weapon1) : 0f;
+            float speed2 = (weapon2 != null && stats2 != null) ? CalculateSpeed(skill2, stats2, weapon2) : 0f;
 
             var result = new SpeedResolutionResult
             {
@@ -36,16 +38,16 @@ namespace FairyGate.Combat
             else if (speed1 > speed2)
             {
                 result.resolution = SpeedResolution.Player1Wins;
-                result.winner = combatant1;
-                result.loser = combatant2;
+                result.winner = combatant1Transform;
+                result.loser = combatant2Transform;
                 result.winningSkill = skill1;
                 result.losingSkill = skill2;
             }
             else
             {
                 result.resolution = SpeedResolution.Player2Wins;
-                result.winner = combatant2;
-                result.loser = combatant1;
+                result.winner = combatant2Transform;
+                result.loser = combatant1Transform;
                 result.winningSkill = skill2;
                 result.losingSkill = skill1;
             }
@@ -61,7 +63,7 @@ namespace FairyGate.Combat
 
         public static bool IsOffensiveSkill(SkillType skill)
         {
-            return skill == SkillType.Attack || skill == SkillType.Smash || skill == SkillType.Windmill || skill == SkillType.RangedAttack;
+            return skill == SkillType.Attack || skill == SkillType.Smash || skill == SkillType.Windmill || skill == SkillType.RangedAttack || skill == SkillType.Lunge;
         }
 
         public static bool IsDefensiveSkill(SkillType skill)
@@ -133,6 +135,15 @@ namespace FairyGate.Combat
                         _ => 0f
                     };
 
+                case SkillType.Lunge:
+                    return phase switch
+                    {
+                        SkillExecutionState.Startup => 0.1f,
+                        SkillExecutionState.Active => 0.15f,
+                        SkillExecutionState.Recovery => 0.2f,
+                        _ => 0f
+                    };
+
                 default:
                     return 0f;
             }
@@ -143,8 +154,8 @@ namespace FairyGate.Combat
     public class SpeedResolutionResult
     {
         public SpeedResolution resolution;
-        public ICombatant winner;
-        public ICombatant loser;
+        public Transform winner;
+        public Transform loser;
         public SkillType skill1;
         public SkillType skill2;
         public SkillType winningSkill;

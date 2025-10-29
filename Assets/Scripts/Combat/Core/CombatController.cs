@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace FairyGate.Combat
 {
-    public class CombatController : MonoBehaviour, ICombatant, ICombatUpdatable
+    public class CombatController : MonoBehaviour, ICombatUpdatable
     {
         [Header("Combat Configuration")]
         [SerializeField] private CharacterStats baseStats;
@@ -39,13 +39,14 @@ namespace FairyGate.Combat
         // Cached list for target finding (Phase 3.4 optimization)
         private List<Transform> cachedTargetsList = new List<Transform>();
 
-        // ICombatant Properties
+        // Public Properties
         public CharacterStats BaseStats => baseStats;
         public CharacterStats Stats => equipmentManager != null ? equipmentManager.ModifiedStats : baseStats;
         public Transform WeaponTransform => weaponController?.transform;
         public Transform Transform => transform;
         public bool IsInCombat => currentCombatState == CombatState.Combat || currentCombatState == CombatState.Charging || currentCombatState == CombatState.Executing;
         public Transform CurrentTarget => currentTarget;
+        public CombatState CurrentCombatState => currentCombatState;
 
         // IDamageable Properties
         public int CurrentHealth => healthSystem?.CurrentHealth ?? 0;
@@ -142,9 +143,12 @@ namespace FairyGate.Combat
             if (!IsAlive)
                 return CombatState.Dead;
 
-            // Status effects determine state
+            // Status effects determine state (priority: Knockdown > Knockback > Stun)
             if (statusEffectManager.IsKnockedDown)
                 return CombatState.KnockedDown;
+
+            if (statusEffectManager.IsKnockedBack)
+                return CombatState.Knockback;
 
             if (statusEffectManager.IsStunned)
                 return CombatState.Stunned;
@@ -313,7 +317,7 @@ namespace FairyGate.Combat
             }
         }
 
-        // ICombatant implementation
+        // Range and Distance Methods
         public bool IsInRangeOf(Transform target)
         {
             return weaponController.IsInRange(target);

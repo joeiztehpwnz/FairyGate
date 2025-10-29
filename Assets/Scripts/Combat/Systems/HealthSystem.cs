@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace FairyGate.Combat
 {
-    public class HealthSystem : MonoBehaviour, IDamageable
+    public class HealthSystem : MonoBehaviour
     {
         [Header("Health Configuration")]
         [SerializeField] private CharacterStats characterStats;
