@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEditor;
 using FairyGate.Combat;
-using FairyGate.Combat.UI;
 
 namespace FairyGate.Combat.Editor
 {
@@ -433,29 +432,16 @@ namespace FairyGate.Combat.Editor
 
         private static void CreateHealthStaminaBars(GameObject player, GameObject enemy)
         {
-            // Create Player Health/Stamina UI (OnGUI-based)
-            var playerHealthBar = player.AddComponent<HealthBarUI>();
-            SetSerializedProperty(playerHealthBar, "barPosition", new Vector2(10, 10));
-            SetSerializedProperty(playerHealthBar, "barSize", new Vector2(250, 25));
-            playerHealthBar.SetTargetHealthSystem(player.GetComponent<HealthSystem>());
+            // Add CharacterInfoDisplay to both player and enemy
+            // It will auto-find all components (SkillSystem, HealthSystem, StaminaSystem, etc.)
 
-            var playerStaminaBar = player.AddComponent<StaminaBarUI>();
-            SetSerializedProperty(playerStaminaBar, "barPosition", new Vector2(10, 45));
-            SetSerializedProperty(playerStaminaBar, "barSize", new Vector2(250, 25));
-            playerStaminaBar.SetTargetStaminaSystem(player.GetComponent<StaminaSystem>());
+            var playerInfoDisplay = player.AddComponent<CharacterInfoDisplay>();
+            Debug.Log("✅ Added CharacterInfoDisplay to Player");
 
-            // Create Enemy Health/Stamina UI (OnGUI-based)
-            var enemyHealthBar = enemy.AddComponent<HealthBarUI>();
-            SetSerializedProperty(enemyHealthBar, "barPosition", new Vector2(10, 90));
-            SetSerializedProperty(enemyHealthBar, "barSize", new Vector2(250, 25));
-            enemyHealthBar.SetTargetHealthSystem(enemy.GetComponent<HealthSystem>());
+            var enemyInfoDisplay = enemy.AddComponent<CharacterInfoDisplay>();
+            Debug.Log("✅ Added CharacterInfoDisplay to Enemy");
 
-            var enemyStaminaBar = enemy.AddComponent<StaminaBarUI>();
-            SetSerializedProperty(enemyStaminaBar, "barPosition", new Vector2(10, 125));
-            SetSerializedProperty(enemyStaminaBar, "barSize", new Vector2(250, 25));
-            enemyStaminaBar.SetTargetStaminaSystem(enemy.GetComponent<StaminaSystem>());
-
-            Debug.Log("✅ Created Health/Stamina UI Bars (OnGUI-based)");
+            Debug.Log("✅ Created Character Info Displays (world-space UI with visual bars)");
         }
 
         private static void CreateTestingUI()
