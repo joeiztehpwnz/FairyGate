@@ -35,9 +35,81 @@ namespace FairyGate.Combat
             }
         }
 
+        private void OnDestroy()
+        {
+            // Clear singleton reference when destroyed (scene unload)
+            if (instance == this)
+            {
+                instance = null;
+            }
+
+            // Clear all lists and pools to prevent stale references
+            if (waitingDefensiveSkills != null)
+            {
+                waitingDefensiveSkills.Clear();
+            }
+            if (pendingExecutions != null)
+            {
+                pendingExecutions.Clear();
+            }
+
+            if (enableDebugLogs)
+            {
+                Debug.Log("[CombatInteractionManager] OnDestroy - Cleared all lists and pools");
+            }
+        }
+
         private void Update()
         {
             ProcessPendingExecutions();
+            CleanupStaleDefensiveSkills();
+        }
+
+        /// <summary>
+        /// CRITICAL FIX #2/#3: Periodically clean up defensive skills that have been waiting too long.
+        /// Prevents memory leak from defensive skills that never get consumed.
+        /// </summary>
+        private void CleanupStaleDefensiveSkills()
+        {
+            const float DEFENSIVE_SKILL_TIMEOUT = 5.0f; // 5 seconds max waiting time
+
+            for (int i = waitingDefensiveSkills.Count - 1; i >= 0; i--)
+            {
+                var defensiveSkill = waitingDefensiveSkills[i];
+
+                // NULL SAFETY: Check if references are destroyed (scene reload, object destruction)
+                if (defensiveSkill == null || defensiveSkill.skillSystem == null ||
+                    defensiveSkill.combatant == null || !defensiveSkill.skillSystem)
+                {
+                    if (enableDebugLogs)
+                    {
+                        Debug.LogWarning($"[Scene Cleanup] Removing defensive skill with destroyed references at index {i}");
+                    }
+                    waitingDefensiveSkills.RemoveAt(i);
+                    if (defensiveSkill != null)
+                    {
+                        executionPool.Return(defensiveSkill);
+                    }
+                    continue;
+                }
+
+                // Check if defensive skill has been waiting too long
+                if (Time.time - defensiveSkill.timestamp > DEFENSIVE_SKILL_TIMEOUT)
+                {
+                    if (enableDebugLogs)
+                    {
+                        Debug.Log($"[CRITICAL FIX #2/#3] Cleaning up stale {defensiveSkill.combatant.name} {defensiveSkill.skillType} (waited {Time.time - defensiveSkill.timestamp:F1}s)");
+                    }
+
+                    // Force complete the defensive skill on the SkillSystem
+                    CompleteDefensiveSkillExecution(defensiveSkill);
+
+                    // NOTE: CompleteDefensiveSkillExecution triggers WaitingState.OnExit which calls
+                    // RemoveWaitingDefensiveSkill, which already removes from list and returns to pool
+                    // So we DON'T need to manually remove here (would cause double-removal)
+                    // The list will be modified by the state transition callback
+                }
+            }
         }
 
         // List pool helper methods (Phase 3.3 optimization)
@@ -95,6 +167,54 @@ namespace FairyGate.Combat
             {
                 waitingDefensiveSkills.Add(execution);
             }
+        }
+
+        /// <summary>
+        /// Phase 3: Removes a defensive skill from waiting list when SkillSystem exits Waiting state.
+        /// Called by WaitingState.OnExit() to prevent memory leak.
+        /// This fixes ALL memory leak bugs by guaranteeing cleanup on every transition.
+        /// </summary>
+        public void RemoveWaitingDefensiveSkill(SkillSystem skillSystem)
+        {
+            // NULL SAFETY: Check if skillSystem is destroyed before accessing properties
+            if (skillSystem == null || !skillSystem)
+            {
+                Debug.LogWarning($"<color=red>[Scene Cleanup] RemoveWaitingDefensiveSkill called with null/destroyed SkillSystem</color>");
+                return;
+            }
+
+            Debug.Log($"<color=orange>[CombatInteractionManager] RemoveWaitingDefensiveSkill called for {skillSystem.gameObject.name}, waiting list has {waitingDefensiveSkills.Count} entries</color>");
+
+            // Find and remove the SkillExecution associated with this SkillSystem
+            for (int i = waitingDefensiveSkills.Count - 1; i >= 0; i--)
+            {
+                var defensiveSkill = waitingDefensiveSkills[i];
+
+                // NULL SAFETY: Skip destroyed entries
+                if (defensiveSkill == null || defensiveSkill.skillSystem == null || !defensiveSkill.skillSystem)
+                {
+                    Debug.LogWarning($"<color=yellow>[Scene Cleanup] Skipping destroyed entry at index {i}</color>");
+                    waitingDefensiveSkills.RemoveAt(i);
+                    if (defensiveSkill != null)
+                    {
+                        executionPool.Return(defensiveSkill);
+                    }
+                    continue;
+                }
+
+                if (defensiveSkill.skillSystem == skillSystem)
+                {
+                    Debug.Log($"<color=lime>[State Pattern Cleanup] Found and removing {defensiveSkill.combatant.name} {defensiveSkill.skillType} from waiting list (index {i})</color>");
+
+                    waitingDefensiveSkills.RemoveAt(i);
+                    executionPool.Return(defensiveSkill);
+
+                    Debug.Log($"<color=lime>[State Pattern Cleanup] Removal complete, waiting list now has {waitingDefensiveSkills.Count} entries</color>");
+                    return; // Found and removed
+                }
+            }
+
+            Debug.LogWarning($"<color=red>[State Pattern Cleanup] Could not find {skillSystem.gameObject.name} in waiting list!</color>");
         }
 
         private void ProcessPendingExecutions()
@@ -160,8 +280,11 @@ namespace FairyGate.Combat
                 foreach (var defense in validDefenses)
                 {
                     ProcessSkillInteraction(offensiveSkill, defense);
-                    // Return defensive execution to pool after processing
-                    executionPool.Return(defense);
+                    // CRITICAL FIX: Don't return to pool here - WaitingState.OnExit() handles cleanup
+                    // This prevents double-free bug that was causing Defense/Counter to get stuck
+                    // The state machine transition during ProcessSkillInteraction triggers:
+                    // CompleteDefensiveSkillExecution -> ForceTransitionToRecovery -> WaitingState.OnExit()
+                    // -> RemoveWaitingDefensiveSkill() which removes from list AND returns to pool
                 }
             }
 
@@ -178,10 +301,19 @@ namespace FairyGate.Combat
             {
                 if (result.resolution == SpeedResolution.Tie)
                 {
-                    // Simultaneous execution
+                    // Simultaneous execution (CRITICAL FIX #1: Check if combatants are still alive)
                     foreach (var execution in result.tiedExecutions)
                     {
-                        ExecuteOffensiveSkillDirectly(execution);
+                        // Check if combatant is still alive before executing
+                        var healthSystem = execution.combatant.GetComponent<HealthSystem>();
+                        if (healthSystem != null && healthSystem.IsAlive)
+                        {
+                            ExecuteOffensiveSkillDirectly(execution);
+                        }
+                        else if (enableDebugLogs)
+                        {
+                            Debug.Log($"[CRITICAL FIX #1] {execution.combatant.name} died mid-execution, skipping {execution.skillType}");
+                        }
                     }
                 }
                 else
@@ -222,7 +354,9 @@ namespace FairyGate.Combat
                 if (canRespond)
                 {
                     validResponses.Add(defensiveSkill);
-                    waitingDefensiveSkills.Remove(defensiveSkill);
+                    // Phase 3: DON'T remove here - let WaitingState.OnExit() handle cleanup
+                    // This ensures cleanup happens exactly once via state machine lifecycle
+                    // waitingDefensiveSkills.Remove(defensiveSkill); // OLD CODE - causes double removal
                 }
             }
 
@@ -352,6 +486,18 @@ namespace FairyGate.Combat
             return InteractionResult.NoInteraction;
         }
 
+        /// <summary>
+        /// Helper method to safely get combatant name (handles destroyed objects)
+        /// </summary>
+        private string GetSafeCombatantName(SkillExecution execution)
+        {
+            if (execution == null || execution.combatant == null || !execution.combatant)
+            {
+                return "[Destroyed]";
+            }
+            return execution.combatant.name;
+        }
+
         private void ProcessInteractionEffects(
             InteractionResult interaction,
             SkillExecution attacker,
@@ -361,6 +507,14 @@ namespace FairyGate.Combat
             WeaponData attackerWeapon,
             WeaponData defenderWeapon)
         {
+            // NULL SAFETY: Check if combatants are destroyed (scene reload, death during processing)
+            if (attacker == null || attacker.combatant == null || !attacker.combatant ||
+                defender == null || defender.combatant == null || !defender.combatant)
+            {
+                Debug.LogWarning($"[Scene Cleanup] ProcessInteractionEffects aborted - attacker or defender destroyed");
+                return;
+            }
+
             var attackerHealth = attacker.combatant.GetComponent<HealthSystem>();
             var defenderHealth = defender.combatant.GetComponent<HealthSystem>();
             var attackerStatusEffects = attacker.combatant.GetComponent<StatusEffectManager>();
@@ -368,11 +522,13 @@ namespace FairyGate.Combat
             var defenderKnockdownMeter = defender.combatant.GetComponent<KnockdownMeterTracker>();
 
             // Null safety checks
-            Debug.Assert(attackerHealth != null, $"HealthSystem is null on {attacker.combatant.gameObject.name}");
-            Debug.Assert(defenderHealth != null, $"HealthSystem is null on {defender.combatant.gameObject.name}");
-            Debug.Assert(attackerStatusEffects != null, $"StatusEffectManager is null on {attacker.combatant.gameObject.name}");
-            Debug.Assert(defenderStatusEffects != null, $"StatusEffectManager is null on {defender.combatant.gameObject.name}");
-            Debug.Assert(defenderKnockdownMeter != null, $"KnockdownMeterTracker is null on {defender.combatant.gameObject.name}");
+            if (attackerHealth == null || defenderHealth == null ||
+                attackerStatusEffects == null || defenderStatusEffects == null ||
+                defenderKnockdownMeter == null)
+            {
+                Debug.LogWarning($"[Scene Cleanup] ProcessInteractionEffects aborted - missing components");
+                return;
+            }
 
             switch (interaction)
             {
@@ -386,7 +542,7 @@ namespace FairyGate.Combat
 
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{attacker.combatant.name} attack blocked by {defender.combatant.name} defense (Defense broken after block)");
+                        Debug.Log($"{GetSafeCombatantName(attacker)} attack blocked by {GetSafeCombatantName(defender)} defense (Defense broken after block)");
                     }
 
                     // Defense breaks immediately after blocking
@@ -400,11 +556,16 @@ namespace FairyGate.Combat
                     attackerStatusEffects.ApplyInteractionKnockdown(counterDisplacement);
                     int reflectedDamage = DamageCalculator.CalculateCounterReflection(attackerStats, attackerWeapon);
                     attackerHealth.TakeDamage(reflectedDamage, defender.combatant.transform);
+
+                    // Register hit dealt for defender's pattern tracking (counter reflected damage)
+                    WeaponController defenderWeaponController = defender.combatant.GetComponent<WeaponController>();
+                    defenderWeaponController?.RegisterHitDealt(attacker.combatant.transform);
+
                     // Note: Counter knockdown overrides stun, but stun should technically be applied first
                     // The knockdown from counter is stronger, so the stun effect is immediately overridden
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{defender.combatant.name} counter reflected {reflectedDamage} damage to {attacker.combatant.name}");
+                        Debug.Log($"{GetSafeCombatantName(defender)} counter reflected {reflectedDamage} damage to {GetSafeCombatantName(attacker)}");
                     }
                     // Complete defensive skill
                     CompleteDefensiveSkillExecution(defender);
@@ -418,8 +579,12 @@ namespace FairyGate.Combat
                     if (counterRangedAttackHit)
                     {
                         // HIT: Defender takes full damage, no reflection
-                        int rangedDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats);
+                        int rangedDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats, SkillType.RangedAttack);
                         defenderHealth.TakeDamage(rangedDamage, attacker.combatant.transform);
+
+                        // Register hit dealt for attacker's pattern tracking
+                        WeaponController rangedAttackerWeaponController = attacker.combatant.GetComponent<WeaponController>();
+                        rangedAttackerWeaponController?.RegisterHitDealt(defender.combatant.transform);
 
                         // Apply universal hit stun
                         defenderStatusEffects.ApplyStun(attackerWeapon.stunDuration);
@@ -429,10 +594,10 @@ namespace FairyGate.Combat
 
                         if (enableDebugLogs)
                         {
-                            Debug.Log($"{defender.combatant.name} Counter ineffective against {attacker.combatant.name} RangedAttack - took {rangedDamage} damage");
+                            Debug.Log($"{GetSafeCombatantName(defender)} Counter ineffective against {GetSafeCombatantName(attacker)} RangedAttack - took {rangedDamage} damage");
                         }
 
-                        // Complete Counter (failed to reflect)
+                        // Complete Counter (WaitingState.OnExit handles cleanup)
                         CompleteDefensiveSkillExecution(defender);
                     }
                     else
@@ -440,10 +605,10 @@ namespace FairyGate.Combat
                         // MISS: Counter takes 0 damage but still completes (wasted counter)
                         if (enableDebugLogs)
                         {
-                            Debug.Log($"{attacker.combatant.name} RangedAttack missed - {defender.combatant.name} Counter wasted");
+                            Debug.Log($"{GetSafeCombatantName(attacker)} RangedAttack missed - {GetSafeCombatantName(defender)} Counter wasted");
                         }
 
-                        // Complete Counter even on miss (counter was used up)
+                        // Complete Counter (WaitingState.OnExit handles cleanup)
                         CompleteDefensiveSkillExecution(defender);
                     }
                     break;
@@ -453,12 +618,17 @@ namespace FairyGate.Combat
                     Vector3 smashKnockbackDirection = (defender.combatant.transform.position - attacker.combatant.transform.position).normalized;
                     Vector3 smashDisplacement = smashKnockbackDirection * CombatConstants.SMASH_KNOCKBACK_DISTANCE;
                     defenderStatusEffects.ApplyInteractionKnockdown(smashDisplacement);
-                    int baseDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats);
+                    int baseDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats, attacker.skillType);
                     int reducedDamage = DamageCalculator.ApplyDamageReduction(baseDamage, CombatConstants.SMASH_VS_DEFENSE_DAMAGE_REDUCTION, defenderStats);
                     defenderHealth.TakeDamage(reducedDamage, attacker.combatant.transform);
+
+                    // Register hit dealt for attacker's pattern tracking
+                    WeaponController attackerWeaponController = attacker.combatant.GetComponent<WeaponController>();
+                    attackerWeaponController?.RegisterHitDealt(defender.combatant.transform);
+
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{attacker.combatant.name} smash broke through {defender.combatant.name} defense for {reducedDamage} damage");
+                        Debug.Log($"{GetSafeCombatantName(attacker)} smash broke through {GetSafeCombatantName(defender)} defense for {reducedDamage} damage");
                     }
                     // Complete defensive skill
                     CompleteDefensiveSkillExecution(defender);
@@ -478,7 +648,7 @@ namespace FairyGate.Combat
 
                             if (enableDebugLogs)
                             {
-                                Debug.Log($"{defender.combatant.name} completely blocked {attacker.combatant.name} RangedAttack (Defense broken after block)");
+                                Debug.Log($"{GetSafeCombatantName(defender)} completely blocked {GetSafeCombatantName(attacker)} RangedAttack (Defense broken after block)");
                             }
 
                             // Defense breaks immediately after blocking
@@ -486,13 +656,14 @@ namespace FairyGate.Combat
                         }
                         else
                         {
-                            // MISS: Defense takes 0 damage, stays active (waiting for next attack)
+                            // MISS: Defense takes 0 damage, but is consumed (one block per activation)
                             if (enableDebugLogs)
                             {
-                                Debug.Log($"{attacker.combatant.name} RangedAttack missed - {defender.combatant.name} Defense remains active");
+                                Debug.Log($"{GetSafeCombatantName(attacker)} RangedAttack missed - {GetSafeCombatantName(defender)} Defense consumed (no block)");
                             }
 
-                            // Do NOT complete Defense - it stays in Waiting state
+                            // Complete Defense (WaitingState.OnExit handles cleanup)
+                            CompleteDefensiveSkillExecution(defender);
                         }
                     }
                     else
@@ -503,7 +674,7 @@ namespace FairyGate.Combat
 
                         if (enableDebugLogs)
                         {
-                            Debug.Log($"{defender.combatant.name} blocked {attacker.combatant.name} windmill (Defense broken after block)");
+                            Debug.Log($"{GetSafeCombatantName(defender)} blocked {GetSafeCombatantName(attacker)} windmill (Defense broken after block)");
                         }
 
                         // Defense breaks immediately after blocking
@@ -516,11 +687,16 @@ namespace FairyGate.Combat
                     Vector3 windmillKnockbackDirection = (defender.combatant.transform.position - attacker.combatant.transform.position).normalized;
                     Vector3 windmillDisplacement = windmillKnockbackDirection * CombatConstants.WINDMILL_KNOCKBACK_DISTANCE;
                     defenderStatusEffects.ApplyInteractionKnockdown(windmillDisplacement);
-                    int windmillDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats);
+                    int windmillDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats, attacker.skillType);
                     defenderHealth.TakeDamage(windmillDamage, attacker.combatant.transform);
+
+                    // Register hit dealt for attacker's pattern tracking
+                    WeaponController windmillAttackerWeaponController = attacker.combatant.GetComponent<WeaponController>();
+                    windmillAttackerWeaponController?.RegisterHitDealt(defender.combatant.transform);
+
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{attacker.combatant.name} windmill broke through {defender.combatant.name} counter for {windmillDamage} damage and knockdown");
+                        Debug.Log($"{GetSafeCombatantName(attacker)} windmill broke through {GetSafeCombatantName(defender)} counter for {windmillDamage} damage and knockdown");
                     }
                     // Complete defensive skill
                     CompleteDefensiveSkillExecution(defender);
@@ -530,7 +706,25 @@ namespace FairyGate.Combat
 
         private void ExecuteOffensiveSkillDirectly(SkillExecution execution)
         {
-            // No defensive response - execute skill normally against target
+            // CRITICAL FIX #1: Safety check - don't execute if attacker is dead
+            var attackerHealth = execution.combatant.GetComponent<HealthSystem>();
+            if (attackerHealth == null || !attackerHealth.IsAlive)
+            {
+                if (enableDebugLogs)
+                {
+                    Debug.Log($"[CRITICAL FIX #1] {execution.combatant.name} is dead, cannot execute {execution.skillType}");
+                }
+                return;
+            }
+
+            // WINDMILL: AoE skill that hits all enemies in range
+            if (execution.skillType == SkillType.Windmill)
+            {
+                ExecuteWindmillAoE(execution);
+                return;
+            }
+
+            // All other skills: single-target execution
             var target = execution.combatant.CurrentTarget;
             if (target == null) return;
 
@@ -571,9 +765,13 @@ namespace FairyGate.Combat
                 // If we reach here, the ranged attack hit - continue with normal damage application
             }
 
-            // Calculate and apply damage
-            int damage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, targetStats);
+            // Calculate and apply damage (with skill-specific damage multiplier)
+            int damage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, targetStats, execution.skillType);
             targetHealth.TakeDamage(damage, execution.combatant.transform);
+
+            // Register hit dealt for attacker's pattern tracking
+            WeaponController executionWeaponController = execution.combatant.GetComponent<WeaponController>();
+            executionWeaponController?.RegisterHitDealt(target.transform);
 
             // UNIVERSAL: All hits apply stun (Mabinogi three-tier CC system)
             targetStatusEffects.ApplyStun(attackerWeapon.stunDuration);
@@ -606,12 +804,87 @@ namespace FairyGate.Combat
             }
         }
 
+        private void ExecuteWindmillAoE(SkillExecution execution)
+        {
+            var attackerStats = execution.combatant.Stats;
+            var attackerWeapon = execution.combatant.GetComponent<WeaponController>()?.WeaponData;
+
+            if (attackerStats == null || attackerWeapon == null)
+            {
+                Debug.LogError($"Windmill execution failed: missing stats or weapon on {execution.combatant.name}");
+                return;
+            }
+
+            // Get Windmill range
+            float windmillRange = CombatConstants.WINDMILL_RADIUS;
+
+            // Find all colliders in range
+            Collider[] hitColliders = Physics.OverlapSphere(execution.combatant.transform.position, windmillRange);
+
+            int hitCount = 0;
+            foreach (var hitCollider in hitColliders)
+            {
+                // Skip self
+                if (hitCollider.transform == execution.combatant.transform) continue;
+
+                // Check if this is a valid target (has CombatController)
+                var targetCombatController = hitCollider.GetComponent<CombatController>();
+                if (targetCombatController == null) continue;
+
+                // Skip if on same faction (don't hit allies)
+                if (targetCombatController == execution.combatant) continue;
+
+                // Get target components
+                var targetHealth = hitCollider.GetComponent<HealthSystem>();
+                var targetKnockdownMeter = hitCollider.GetComponent<KnockdownMeterTracker>();
+                var targetStatusEffects = hitCollider.GetComponent<StatusEffectManager>();
+                var targetStats = targetCombatController.Stats;
+
+                if (targetHealth == null || targetKnockdownMeter == null || targetStatusEffects == null || targetStats == null)
+                {
+                    continue; // Skip invalid targets
+                }
+
+                // Skip dead targets
+                if (!targetHealth.IsAlive) continue;
+
+                // Calculate damage
+                int damage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, targetStats, SkillType.Windmill);
+                targetHealth.TakeDamage(damage, execution.combatant.transform);
+
+                // Register hit dealt for attacker's pattern tracking
+                WeaponController executionWeaponController = execution.combatant.GetComponent<WeaponController>();
+                executionWeaponController?.RegisterHitDealt(hitCollider.transform);
+
+                // Apply knockdown with displacement
+                Vector3 knockbackDirection = (hitCollider.transform.position - execution.combatant.transform.position).normalized;
+                Vector3 displacement = knockbackDirection * CombatConstants.WINDMILL_KNOCKBACK_DISTANCE;
+                targetKnockdownMeter.TriggerImmediateKnockdown(displacement);
+
+                hitCount++;
+
+                if (enableDebugLogs)
+                {
+                    Debug.Log($"{execution.combatant.name} Windmill hit {hitCollider.name} for {damage} damage (AoE {hitCount})");
+                }
+            }
+
+            if (enableDebugLogs)
+            {
+                Debug.Log($"{execution.combatant.name} Windmill AoE complete - hit {hitCount} targets");
+            }
+        }
+
         private void CompleteDefensiveSkillExecution(SkillExecution defensiveSkill)
         {
             var skillSystem = defensiveSkill.skillSystem;
             if (skillSystem != null)
             {
                 // Transition defensive skill out of waiting state to recovery
+                // This triggers WaitingState.OnExit() which handles all cleanup:
+                // - RemoveWaitingDefensiveSkill() removes from list
+                // - Returns SkillExecution to pool
+                // Single source of truth for cleanup prevents double-free bugs
                 skillSystem.ForceTransitionToRecovery();
             }
         }

@@ -17,6 +17,11 @@ namespace FairyGate.Combat
         private Transform lastAttacker;
         private bool hasTriggeredKnockback = false;
 
+        // Classic Mabinogi: Combo tracking for diminishing returns
+        private int currentComboHitNumber = 0;
+        private float lastHitTime = -999f;
+        private const float COMBO_RESET_TIME = 2.0f; // Reset combo after 2s without hits
+
         // C# Events (replaces UnityEvents for performance)
         public event Action<float, float> OnMeterChanged; // current, max
         public event Action OnMeterKnockdownTriggered;
@@ -72,6 +77,16 @@ namespace FairyGate.Combat
                     }
                 }
             }
+
+            // Classic Mabinogi: Reset combo counter after timeout
+            if (currentComboHitNumber > 0 && Time.time - lastHitTime > COMBO_RESET_TIME)
+            {
+                if (enableDebugLogs)
+                {
+                    Debug.Log($"[Classic Mabinogi] {gameObject.name} combo reset (timeout)");
+                }
+                currentComboHitNumber = 0;
+            }
         }
 
         public void AddMeterBuildup(int attackDamage, CharacterStats attackerStats, Transform attacker = null)
@@ -82,19 +97,25 @@ namespace FairyGate.Combat
                 lastAttacker = attacker;
             }
 
-            // Calculate buildup: Base + (Attacker Strength / 10) - (Defender Focus / 30)
-            float buildup = CombatConstants.ATTACK_KNOCKDOWN_BUILDUP;
-            buildup += (attackerStats.strength / CombatConstants.STRENGTH_KNOCKDOWN_DIVISOR);
-            buildup -= (characterStats.focus / CombatConstants.FOCUS_STATUS_RECOVERY_DIVISOR);
+            // Classic Mabinogi: Track combo for diminishing returns
+            float timeSinceLastHit = Time.time - lastHitTime;
+            if (timeSinceLastHit > COMBO_RESET_TIME)
+            {
+                currentComboHitNumber = 0; // Reset combo if timeout occurred
+            }
 
-            // Ensure minimum buildup of 1
-            buildup = Mathf.Max(1f, buildup);
+            currentComboHitNumber++; // Increment hit counter
+            lastHitTime = Time.time; // Update last hit timestamp
+
+            // Classic Mabinogi: Use flat diminishing returns values
+            // Each successive hit applies less knockdown pressure to prevent spam
+            float buildup = GetKnockdownBuildupValue(currentComboHitNumber);
 
             AddToMeter(buildup);
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} knockdown meter: +{buildup:F1} (total: {currentMeter:F1}/{maxMeter})");
+                Debug.Log($"[Classic Mabinogi] {gameObject.name} knockdown meter: +{buildup:F1} (hit #{currentComboHitNumber}) (total: {currentMeter:F1}/{maxMeter})");
             }
         }
 
@@ -235,6 +256,22 @@ namespace FairyGate.Combat
             }
 
             // NOTE: Smash/Windmill do NOT affect the knockdown meter system at all
+        }
+
+        /// <summary>
+        /// Classic Mabinogi: Diminishing returns on knockdown buildup to prevent spam.
+        /// Each successive hit in a combo applies less knockdown pressure.
+        /// Returns FLAT knockdown values (not multipliers).
+        /// </summary>
+        private float GetKnockdownBuildupValue(int hitNumber)
+        {
+            return hitNumber switch
+            {
+                1 => 30f,  // First hit: 30 knockdown buildup
+                2 => 25f,  // Second hit: 25 knockdown buildup
+                3 => 20f,  // Third hit: 20 knockdown buildup
+                _ => 15f   // Subsequent hits: 15 knockdown buildup
+            };
         }
 
         private void OnValidate()

@@ -1,0 +1,273 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dfdcda79bb13a606dbf66d3aa75e03b1, type: 3}
+  m_Name: ArcherPattern
+  m_EditorClassIdentifier:
+  patternName: Archer - Ranged Kiter
+  archetypeTag: Archer
+  designNotes: Ranged specialist that maintains distance with bow, retreats when
+    pressured, and switches to dagger for desperate close-quarters defense. Vulnerable
+    when cornered. Punishes players who fail to close distance.
+  nodes:
+  - nodeName: Kiting Position
+    description: Maintain distance and fire ranged attacks
+    skillToUse: 5
+    requiresCharge: 0
+    movementBehavior: 0
+    customTargetRange: 6
+    rangeTolerance: 1
+    movementSpeedMultiplier: 1
+    freezeMovement: 0
+    conditions:
+    - type: 7
+      floatValue: 3.5
+      intValue: 0
+      boolValue: 0
+      skillValue: 0
+      combatStateValue: 0
+    transitions:
+    - targetNodeName: Tactical Retreat
+      conditions:
+      - type: 7
+        floatValue: 3.5
+        intValue: 0
+        boolValue: 0
+        skillValue: 0
+        combatStateValue: 0
+      priority: 10
+      resetHitCounters: 0
+      startCooldownID: 0
+      cooldownDuration: 0
+    - targetNodeName: Kiting Position
+      conditions:
+      - type: 14
+        floatValue: 0.7
+        intValue: 0
+        boolValue: 0
+        skillValue: 0
+        combatStateValue: 0
+      priority: 5
+      resetHitCounters: 0
+      startCooldownID: 0
+      cooldownDuration: 0
+    telegraph:
+      visualType: 2
+      glowColor: {r: 0.3, g: 0.6, b: 1, a: 1}
+      audioClip: bow_nock
+      audioVolume: 0.8
+      duration: 0.3
+      anticipation: 0.2
+    fallbackNodeName: Tactical Retreat
+    fallbackTimeout: 5
+  - nodeName: Tactical Retreat
+    description: Back away from approaching player
+    skillToUse: 0
+    requiresCharge: 0
+    movementBehavior: 2
+    customTargetRange: 6
+    rangeTolerance: 1
+    movementSpeedMultiplier: 1.4
+    freezeMovement: 0
+    conditions: []
+    transitions:
+    - targetNodeName: Kiting Position
+      conditions:
+      - type: 7
+        floatValue: 5
+        intValue: 0
+        boolValue: 0
+        skillValue: 0
+        combatStateValue: 0
+      priority: 10
+      resetHitCounters: 0
+      startCooldownID: 0
+      cooldownDuration: 0
+    - targetNodeName: Cornered Defense
+      conditions:
+      - type: 7
+        floatValue: 3
+        intValue: 0
+        boolValue: 0
+        skillValue: 0
+        combatStateValue: 0
+      - type: 12
+        floatValue: 2
+        intValue: 0
+        boolValue: 0
+        skillValue: 0
+        combatStateValue: 0
+      priority: 9
+      resetHitCounters: 0
+      startCooldownID: 0
+      cooldownDuration: 0
+    telegraph:
+      visualType: 7
+      glowColor: {r: 1, g: 0.8, b: 0.3, a: 1}
+      audioClip: retreat_step
+      audioVolume: 1
+      duration: 0.2
+      anticipation: 0.1
+    fallbackNodeName: Cornered Defense
+    fallbackTimeout: 4
+  - nodeName: Cornered Defense
+    description: Defensive stance when trapped in close range
+    skillToUse: 1
+    requiresCharge: 1
+    movementBehavior: 5
+    customTargetRange: 2
+    rangeTolerance: 0.3
+    movementSpeedMultiplier: 1
+    freezeMovement: 0
+    conditions: []
+    transitions:
+    - targetNodeName: Desperate Escape
+      conditions:
+      - type: 2
+        floatValue: 2
+        intValue: 2
+        boolValue: 0
+        skillValue: 0
+        combatStateValue: 0
+      priority: 10
+      resetHitCounters: 0
+      startCooldownID: 0
+      cooldownDuration: 0
+    - targetNodeName: Melee Fallback
+      conditions:
+      - type: 14
+        floatValue: 0.6
+        intValue: 0
+        boolValue: 0
+        skillValue: 0
+        combatStateValue: 0
+      priority: 8
+      resetHitCounters: 0
+      startCooldownID: 0
+      cooldownDuration: 0
+    - targetNodeName: Kiting Position
+      conditions:
+      - type: 7
+        floatValue: 4
+        intValue: 0
+        boolValue: 0
+        skillValue: 0
+        combatStateValue: 0
+      priority: 7
+      resetHitCounters: 0
+      startCooldownID: 0
+      cooldownDuration: 0
+    telegraph:
+      visualType: 3
+      glowColor: {r: 0.5, g: 0.5, b: 1, a: 1}
+      audioClip: shield_raise
+      audioVolume: 1
+      duration: 0.4
+      anticipation: 0.3
+    fallbackNodeName: Melee Fallback
+    fallbackTimeout: 5
+  - nodeName: Melee Fallback
+    description: Dagger attacks when forced into close combat
+    skillToUse: 0
+    requiresCharge: 0
+    movementBehavior: 0
+    customTargetRange: 1.5
+    rangeTolerance: 0.3
+    movementSpeedMultiplier: 1.1
+    freezeMovement: 0
+    conditions: []
+    transitions:
+    - targetNodeName: Desperate Escape
+      conditions:
+      - type: 1
+        floatValue: 40
+        intValue: 0
+        boolValue: 0
+        skillValue: 0
+        combatStateValue: 0
+      priority: 10
+      resetHitCounters: 0
+      startCooldownID: 0
+      cooldownDuration: 0
+    - targetNodeName: Desperate Escape
+      conditions:
+      - type: 2
+        floatValue: 3
+        intValue: 3
+        boolValue: 0
+        skillValue: 0
+        combatStateValue: 0
+      priority: 9
+      resetHitCounters: 0
+      startCooldownID: 0
+      cooldownDuration: 0
+    - targetNodeName: Tactical Retreat
+      conditions:
+      - type: 14
+        floatValue: 0.4
+        intValue: 0
+        boolValue: 0
+        skillValue: 0
+        combatStateValue: 0
+      priority: 6
+      resetHitCounters: 0
+      startCooldownID: 0
+      cooldownDuration: 0
+    - targetNodeName: Kiting Position
+      conditions:
+      - type: 7
+        floatValue: 4
+        intValue: 0
+        boolValue: 0
+        skillValue: 0
+        combatStateValue: 0
+      priority: 5
+      resetHitCounters: 0
+      startCooldownID: 0
+      cooldownDuration: 0
+    telegraph:
+      visualType: 1
+      glowColor: {r: 1, g: 0.6, b: 0.2, a: 1}
+      audioClip: dagger_slash
+      audioVolume: 0.9
+      duration: 0.2
+      anticipation: 0.15
+    fallbackNodeName: Tactical Retreat
+    fallbackTimeout: 5
+  - nodeName: Desperate Escape
+    description: Windmill to create space and escape
+    skillToUse: 4
+    requiresCharge: 0
+    movementBehavior: 5
+    customTargetRange: 2
+    rangeTolerance: 0.3
+    movementSpeedMultiplier: 1
+    freezeMovement: 0
+    conditions: []
+    transitions:
+    - targetNodeName: Tactical Retreat
+      conditions: []
+      priority: 10
+      resetHitCounters: 1
+      startCooldownID: 0
+      cooldownDuration: 0
+    telegraph:
+      visualType: 8
+      glowColor: {r: 1, g: 0.3, b: 0.3, a: 1}
+      audioClip: windmill_spin
+      audioVolume: 1
+      duration: 0.4
+      anticipation: 0.3
+    fallbackNodeName: Tactical Retreat
+    fallbackTimeout: 5
+  startingNodeName: Kiting Position
+  difficultyTier: 2
+  enableDebugLogs: 0

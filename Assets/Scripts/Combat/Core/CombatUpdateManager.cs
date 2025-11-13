@@ -38,6 +38,30 @@ namespace FairyGate.Combat
             }
         }
 
+        private void OnDestroy()
+        {
+            // Clear singleton reference when destroyed (scene unload)
+            if (instance == this)
+            {
+                instance = null;
+            }
+
+            // Clear all lists to prevent stale references
+            if (updatables != null)
+            {
+                updatables.Clear();
+            }
+            if (fixedUpdatables != null)
+            {
+                fixedUpdatables.Clear();
+            }
+
+            if (enableDebugLogs)
+            {
+                Debug.Log("[CombatUpdateManager] OnDestroy - Cleared all updatable lists");
+            }
+        }
+
         public static void Register(ICombatUpdatable updatable)
         {
             if (instance == null)

@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0a87fd0e7c3be6e1fbd5fbf035d6a326, type: 3}
+  m_Name: GuardianAIConfig
+  m_EditorClassIdentifier: 
+  configName: Guardian AI
+  archetypeTag: Guardian
+  skillCooldown: 2.5
+  randomVariance: 1
+  engageDistance: 3
+  optimalRangeMultiplier: 0.7
+  usePatternSystem: 1
+  patternDefinition: {fileID: 11400000, guid: 429254149120f15ca92ccce9ccd5df04, type: 2}
+  reactionChance: 0.6
+  useCoordination: 1
+  enableWeaponSwapping: 1
+  preferPrimaryAtRange: 0
+  preferSecondaryAtRange: 1
+  swapDistanceThreshold: 4
+  swapCooldown: 7
+  enableDebugLogs: 0

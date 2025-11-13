@@ -14,16 +14,28 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   weaponName: Sword
   weaponType: 0
-  range: 1.5
+  meleeRange: 1.5
+  rangedRange: 1
+  meleeDamageMultiplier: 1
+  rangedDamageMultiplier: 0.5
   baseDamage: 10
   speed: 1
   stunDuration: 1
+  range: 1.5
   executionSpeedModifier: 0
   speedResolutionModifier: 0
   weaponPrefab: {fileID: 0}
   weaponIcon: {fileID: 0}
   hitSounds: []
-  description: Balanced baseline for all stats
+  description: Balanced baseline for all stats - can throw in desperation
+  meleeTrailColor: {r: 1, g: 1, b: 1, a: 1}
+  meleeTrailWidth: 0.35
+  meleeTrailTime: 0.3
+  meleeTrailStartWidthMultiplier: 1
+  meleeTrailEndWidthMultiplier: 1
+  meleeTrailEndColor: {r: 1, g: 1, b: 1, a: 1}
+  meleeTrailCornerVertices: 3
+  meleeTrailEndCapVertices: 3
   isRangedWeapon: 0
   projectileType: Arrow
   trailColorStart: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}

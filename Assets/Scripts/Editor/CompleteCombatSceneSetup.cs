@@ -67,6 +67,7 @@ namespace FairyGate.Combat.Editor
             var spear = CreateOrLoadWeaponData("TestSpear", WeaponType.Spear);
             var dagger = CreateOrLoadWeaponData("TestDagger", WeaponType.Dagger);
             var mace = CreateOrLoadWeaponData("TestMace", WeaponType.Mace);
+            var bow = CreateOrLoadWeaponData("TestBow", WeaponType.Bow);
 
             // Create all equipment sets
             CreateAllEquipmentAssets();
@@ -280,6 +281,7 @@ namespace FairyGate.Combat.Editor
                 WeaponType.Spear => WeaponData.CreateSpearData(),
                 WeaponType.Dagger => WeaponData.CreateDaggerData(),
                 WeaponType.Mace => WeaponData.CreateMaceData(),
+                WeaponType.Bow => WeaponData.CreateBowData(),
                 _ => WeaponData.CreateSwordData()
             };
 
@@ -347,7 +349,7 @@ namespace FairyGate.Combat.Editor
             SetSerializedProperty(skillSystem, "characterStats", stats);
             SetSerializedProperty(movementController, "characterStats", stats);
             SetSerializedProperty(knockdownMeter, "characterStats", stats);
-            SetSerializedProperty(weaponController, "weaponData", weapon);
+            SetSerializedProperty(weaponController, "primaryWeapon", weapon);
             SetSerializedProperty(accuracySystem, "characterStats", stats);
 
             // Configure control types
@@ -358,9 +360,12 @@ namespace FairyGate.Combat.Editor
             SetSerializedProperty(combatController, "enableDebugLogs", false);
             SetSerializedProperty(healthSystem, "enableDebugLogs", false);
             SetSerializedProperty(staminaSystem, "enableDebugLogs", false);
-            SetSerializedProperty(skillSystem, "enableDebugLogs", false);
+            SetSerializedProperty(skillSystem, "enableDebugLogs", true); // Enable for state machine visibility
             SetSerializedProperty(skillSystem, "showSkillGUI", false);
             SetSerializedProperty(movementController, "enableDebugLogs", false);
+
+            // PHASE 6: Enable state machine for testing
+            SetSerializedProperty(skillSystem, "useStateMachine", true);
 
             // Add visual representation
             var visual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
@@ -379,6 +384,12 @@ namespace FairyGate.Combat.Editor
             // Remove collider from visual
             if (visual.GetComponent<CapsuleCollider>() != null)
                 DestroyImmediate(visual.GetComponent<CapsuleCollider>());
+
+            // Set tag for player (needed for target indicator system)
+            if (!isEnemy)
+            {
+                character.tag = "Player";
+            }
 
             Debug.Log($"✅ Created {name} with {weapon.weaponName}");
             return character;
@@ -529,27 +540,23 @@ namespace FairyGate.Combat.Editor
             Vector3 spawnPos = lastEnemyPosition + new Vector3(2, 0, enemySpawnCount % 2 == 0 ? 2 : -2);
             lastEnemyPosition = spawnPos;
 
-            // Create weapon (default to sword for most, dagger for assassin/archer)
-            WeaponType weaponType = (archetype == EnemyArchetype.Assassin || archetype == EnemyArchetype.Archer)
-                ? WeaponType.Dagger
-                : WeaponType.Sword;
-            var weapon = CreateOrLoadWeaponData($"Test{weaponType}", weaponType);
+            // Create weapons from archetype configuration
+            var primaryWeapon = CreateOrLoadWeaponData($"Test{config.primaryWeapon}", config.primaryWeapon);
+            var secondaryWeapon = CreateOrLoadWeaponData($"Test{config.secondaryWeapon}", config.secondaryWeapon);
 
-            // Create enemy character
+            // Create enemy character with primary weapon
             string enemyName = $"{archetype}_{enemySpawnCount}";
-            var enemy = CreateFullCharacter(enemyName, spawnPos, config.stats, weapon, true);
+            var enemy = CreateFullCharacter(enemyName, spawnPos, config.stats, primaryWeapon, true);
 
-            // Configure SimpleTestAI with archetype-specific weights
-            var simpleAI = enemy.GetComponent<SimpleTestAI>();
-            if (simpleAI != null)
+            // Configure secondary weapon slot
+            var weaponController = enemy.GetComponent<WeaponController>();
+            if (weaponController != null)
             {
-                SetSerializedProperty(simpleAI, "attackWeight", config.attackWeight);
-                SetSerializedProperty(simpleAI, "defenseWeight", config.defenseWeight);
-                SetSerializedProperty(simpleAI, "counterWeight", config.counterWeight);
-                SetSerializedProperty(simpleAI, "smashWeight", config.smashWeight);
-                SetSerializedProperty(simpleAI, "windmillWeight", config.windmillWeight);
-                SetSerializedProperty(simpleAI, "skillCooldown", config.skillCooldown);
+                SetSerializedProperty(weaponController, "secondaryWeapon", secondaryWeapon);
             }
+
+            // Setup AI Pattern System (replaces reactive AI with skill weights)
+            SetupPatternSystemAI(enemy, archetype, config);
 
             // Add equipment manager
             AddEquipmentManager(enemy);
@@ -567,7 +574,58 @@ namespace FairyGate.Combat.Editor
             Debug.Log($"✅ Spawned {archetype} enemy at {spawnPos}");
             Debug.Log($"   Stats: STR={config.stats.strength} DEX={config.stats.dexterity} VIT={config.stats.vitality} " +
                       $"DEF={config.stats.physicalDefense} FOCUS={config.stats.focus}");
-            Debug.Log($"   AI: SimpleTestAI with {archetype} weights");
+            Debug.Log($"   AI: Pattern-based AI with {archetype} pattern");
+        }
+
+        private static void SetupPatternSystemAI(GameObject enemy, EnemyArchetype archetype, EnemyArchetypeConfig.ArchetypeData config)
+        {
+            // Map archetype to pattern asset name
+            string patternName = archetype switch
+            {
+                EnemyArchetype.Guardian => "GuardianPattern",
+                EnemyArchetype.Berserker => "BerserkerPattern",
+                EnemyArchetype.Soldier => "SoldierPattern",
+                EnemyArchetype.Assassin => "AssassinPattern",
+                EnemyArchetype.Archer => "ArcherPattern",
+                _ => "SoldierPattern" // Fallback to balanced Soldier pattern
+            };
+
+            // Load pattern asset
+            string patternPath = $"Assets/Data/AI/Patterns/{patternName}.asset";
+            var patternAsset = AssetDatabase.LoadAssetAtPath<PatternDefinition>(patternPath);
+
+            if (patternAsset == null)
+            {
+                Debug.LogError($"   Pattern System: Could not load pattern at {patternPath} - AI will not function!");
+                return;
+            }
+
+            // 1. Add PatternExecutor component (PRIMARY AI SYSTEM)
+            var patternExecutor = enemy.AddComponent<PatternExecutor>();
+            SetSerializedProperty(patternExecutor, "patternDefinition", patternAsset);
+            SetSerializedProperty(patternExecutor, "enableDebugLogs", false);
+            SetSerializedProperty(patternExecutor, "skillCooldown", config.skillCooldown);
+            SetSerializedProperty(patternExecutor, "randomVariance", 2.0f);
+            SetSerializedProperty(patternExecutor, "engageDistance", 3.0f);
+            SetSerializedProperty(patternExecutor, "useCoordination", true);
+
+            // 2. Add TelegraphSystem component (optional)
+            var telegraphSystem = enemy.AddComponent<TelegraphSystem>();
+            SetSerializedProperty(telegraphSystem, "enableDebugLogs", false);
+
+            // 3. Configure existing SimpleTestAI (minimal coordinator for weapon swapping)
+            var simpleAI = enemy.GetComponent<SimpleTestAI>();
+            if (simpleAI != null)
+            {
+                SetSerializedProperty(simpleAI, "useCoordination", true);
+                SetSerializedProperty(simpleAI, "enableDebugLogs", false);
+            }
+            else
+            {
+                Debug.LogWarning("   SimpleTestAI component not found on enemy - coordination may not work!");
+            }
+
+            Debug.Log($"   AI System: ✅ PatternExecutor with {patternName}");
         }
 
         #endregion

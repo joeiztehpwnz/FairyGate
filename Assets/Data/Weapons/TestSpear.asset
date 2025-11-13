@@ -14,16 +14,29 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   weaponName: Spear
   weaponType: 1
-  range: 2.5
+  meleeRange: 1.5
+  rangedRange: 1.5
+  meleeDamageMultiplier: 1
+  rangedDamageMultiplier: 0.6
   baseDamage: 8
   speed: 0.8
   stunDuration: 0.8
+  range: 1.5
   executionSpeedModifier: 0.1
   speedResolutionModifier: -0.1
   weaponPrefab: {fileID: 0}
   weaponIcon: {fileID: 0}
   hitSounds: []
-  description: Range advantage with moderate damage/speed trade-offs
+  description: Balanced stats with moderate damage/speed - can throw (classic: no
+    range advantage)
+  meleeTrailColor: {r: 0.7, g: 0.9, b: 1, a: 1}
+  meleeTrailWidth: 0.25
+  meleeTrailTime: 0.25
+  meleeTrailStartWidthMultiplier: 1.2
+  meleeTrailEndWidthMultiplier: 0.5
+  meleeTrailEndColor: {r: 0.5, g: 0.7, b: 0.9, a: 1}
+  meleeTrailCornerVertices: 2
+  meleeTrailEndCapVertices: 5
   isRangedWeapon: 0
   projectileType: Arrow
   trailColorStart: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}

@@ -91,4 +91,11 @@ namespace FairyGate.Combat
         NoInteraction,
         SimultaneousExecution
     }
+
+    public enum PreferredRange
+    {
+        Close,      // Prefer this weapon at close range
+        Far,        // Prefer this weapon at long range
+        Either      // No range preference for this weapon
+    }
 }

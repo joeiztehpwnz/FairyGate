@@ -31,6 +31,8 @@ namespace FairyGate.Combat
         private float baseMovementSpeed;
         private float skillMovementModifier = 1f;
         private Vector3 aiMovementInput = Vector3.zero;
+        private Vector3 overrideMovementInput = Vector3.zero;
+        private bool hasMovementOverride = false;
 
         public bool CanMove => canMove;
         public float CurrentSpeed => currentMovementSpeed;
@@ -97,8 +99,13 @@ namespace FairyGate.Combat
 
             Vector3 moveDirection = Vector3.zero;
 
+            // Check for movement override first (auto-movement for skills)
+            if (hasMovementOverride)
+            {
+                moveDirection = overrideMovementInput;
+            }
             // Get input based on control type
-            if (isPlayerControlled)
+            else if (isPlayerControlled)
             {
                 // Player keyboard input - get raw input direction
                 Vector3 inputDirection = Vector3.zero;
@@ -193,8 +200,20 @@ namespace FairyGate.Combat
 
         public void SetMovementInput(Vector3 inputDirection)
         {
-            if (!isPlayerControlled)
+            if (isPlayerControlled)
             {
+                // Player: Use movement override system (for auto-movement during skills)
+                overrideMovementInput = inputDirection;
+                hasMovementOverride = inputDirection != Vector3.zero;
+
+                if (enableDebugLogs && inputDirection != Vector3.zero)
+                {
+                    Debug.Log($"{gameObject.name} Player movement override: {inputDirection}");
+                }
+            }
+            else
+            {
+                // AI: Use normal AI movement input
                 aiMovementInput = inputDirection;
 
                 if (enableDebugLogs && inputDirection != Vector3.zero)
@@ -220,32 +239,39 @@ namespace FairyGate.Combat
                 return 0f;
             }
 
-            // Movement restrictions during charging and waiting states
+            // Classic Mabinogi: Movement restrictions during charging and waiting states
             switch (skillType)
             {
                 case SkillType.Attack:
+                    return 1f; // Instant execution, no charging phase
+
                 case SkillType.Smash:
-                    return 1f; // Normal movement speed while charging
+                case SkillType.Lunge:
+                    // Offensive skills: 50% speed while charging (vulnerability window)
+                    if (executionState == SkillExecutionState.Charging)
+                        return CombatConstants.OFFENSIVE_CHARGE_MOVE_SPEED;
+                    else
+                        return 1f;
 
                 case SkillType.Defense:
-                    // 30% reduction while charging AND waiting
+                    // Rooted in place while charging AND waiting (defensive commitment)
                     return (executionState == SkillExecutionState.Charging || executionState == SkillExecutionState.Waiting)
-                        ? CombatConstants.DEFENSE_MOVEMENT_SPEED_MODIFIER
+                        ? CombatConstants.DEFENSIVE_CHARGE_MOVE_SPEED
                         : 1f;
 
                 case SkillType.Counter:
-                    if (executionState == SkillExecutionState.Charging)
-                        return CombatConstants.COUNTER_MOVEMENT_SPEED_MODIFIER; // 30% reduction while charging
-                    else if (executionState == SkillExecutionState.Waiting)
-                        return 0f; // Immobilized while waiting
+                    // Rooted in place while charging AND waiting (defensive commitment)
+                    if (executionState == SkillExecutionState.Charging || executionState == SkillExecutionState.Waiting)
+                        return CombatConstants.DEFENSIVE_CHARGE_MOVE_SPEED;
                     else
                         return 1f;
 
                 case SkillType.Windmill:
+                    // No penalty while charging (mobile AoE), immobilized when charged/executing
                     if (executionState == SkillExecutionState.Charging)
-                        return CombatConstants.WINDMILL_MOVEMENT_SPEED_MODIFIER; // 30% reduction while charging
+                        return CombatConstants.WINDMILL_CHARGE_MOVE_SPEED; // 100% speed (no penalty)
                     else if (executionState == SkillExecutionState.Charged || executionState == SkillExecutionState.Active)
-                        return 0f; // Immobilized when charged and during execution
+                        return 0f; // Immobilized during execution
                     else
                         return 1f;
 

@@ -79,8 +79,15 @@ namespace FairyGate.Combat
         // Renamed from Update() to CombatUpdate() for centralized update management
         public void CombatUpdate(float deltaTime)
         {
-            if (isResting)
+            // Classic Mabinogi: Passive stamina regeneration (0.4/s = 24/min)
+            // Always regenerates slowly, even during combat
+            if (!isResting)
             {
+                RegenerateStamina(CombatConstants.PASSIVE_STAMINA_REGEN * deltaTime);
+            }
+            else
+            {
+                // Active rest regeneration (much faster: 25/s)
                 RegenerateStamina(CombatConstants.REST_STAMINA_REGENERATION_RATE * deltaTime);
             }
 
@@ -198,6 +205,17 @@ namespace FairyGate.Combat
         private void CheckForAutoCancel()
         {
             if (skillSystem == null || isInGracePeriod) return;
+
+            // PHASE 3 COMPATIBILITY: If using state machine, WaitingState handles its own auto-cancel
+            // This prevents dual ownership and race conditions
+            // Note: This check only affects Waiting state - other states still use this auto-cancel logic
+            bool usingStateMachine = skillSystem.StateMachine != null && skillSystem.StateMachine.CurrentState != null;
+            if (usingStateMachine && skillSystem.CurrentState == SkillExecutionState.Waiting)
+            {
+                // Skip auto-cancel for Waiting state when using state machine
+                // WaitingState.Update() handles stamina depletion internally
+                return;
+            }
 
             // Check if we need to auto-cancel any waiting state skills
             if (skillSystem.CurrentState == SkillExecutionState.Waiting)

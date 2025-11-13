@@ -61,7 +61,7 @@ namespace FairyGate.Combat
         {
             if (isAiming)
             {
-                UpdateAccuracy();
+                UpdateAccuracy(deltaTime);
             }
         }
 
@@ -100,7 +100,7 @@ namespace FairyGate.Combat
                 Debug.Log($"{gameObject.name} stopped aiming");
         }
 
-        private void UpdateAccuracy()
+        private void UpdateAccuracy(float deltaTime)
         {
             if (currentTarget == null)
             {
@@ -123,7 +123,7 @@ namespace FairyGate.Combat
             }
 
             // Update accuracy
-            currentAccuracy += effectiveBuildRate * Time.deltaTime;
+            currentAccuracy += effectiveBuildRate * deltaTime;
             currentAccuracy = Mathf.Clamp(currentAccuracy, 1f, 100f);
         }
 

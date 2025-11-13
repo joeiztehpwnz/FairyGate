@@ -14,16 +14,29 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   weaponName: Mace
   weaponType: 3
-  range: 1.2
+  meleeRange: 1.5
+  rangedRange: 0.5
+  meleeDamageMultiplier: 1
+  rangedDamageMultiplier: 0.3
   baseDamage: 15
   speed: 0.6
   stunDuration: 1.5
+  range: 1.5
   executionSpeedModifier: 0.3
   speedResolutionModifier: -0.3
   weaponPrefab: {fileID: 0}
   weaponIcon: {fileID: 0}
   hitSounds: []
-  description: Damage/stun advantage with speed/range trade-offs
+  description: Damage/stun advantage with speed trade-offs - poor thrown weapon (classic:
+    no range disadvantage)
+  meleeTrailColor: {r: 1, g: 0, b: 0, a: 1}
+  meleeTrailWidth: 0.5
+  meleeTrailTime: 0.4
+  meleeTrailStartWidthMultiplier: 1.5
+  meleeTrailEndWidthMultiplier: 0.8
+  meleeTrailEndColor: {r: 0.8, g: 0, b: 0, a: 1}
+  meleeTrailCornerVertices: 2
+  meleeTrailEndCapVertices: 3
   isRangedWeapon: 0
   projectileType: Arrow
   trailColorStart: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}

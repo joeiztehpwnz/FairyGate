@@ -4,10 +4,16 @@ namespace FairyGate.Combat
 {
     public static class DamageCalculator
     {
-        public static int CalculateBaseDamage(CharacterStats attackerStats, WeaponData weapon, CharacterStats defenderStats)
+        public static int CalculateBaseDamage(CharacterStats attackerStats, WeaponData weapon, CharacterStats defenderStats, SkillType skillType)
         {
-            int baseDamage = weapon.baseDamage + attackerStats.strength - defenderStats.physicalDefense;
-            return Mathf.Max(baseDamage, CombatConstants.MINIMUM_DAMAGE);
+            // Apply skill-specific damage multiplier
+            float damageMultiplier = skillType == SkillType.RangedAttack
+                ? weapon.rangedDamageMultiplier
+                : weapon.meleeDamageMultiplier;
+
+            int weaponDamage = Mathf.RoundToInt(weapon.baseDamage * damageMultiplier);
+            int totalDamage = weaponDamage + attackerStats.strength - defenderStats.physicalDefense;
+            return Mathf.Max(totalDamage, CombatConstants.MINIMUM_DAMAGE);
         }
 
         public static int CalculateCounterReflection(CharacterStats attackerStats, WeaponData attackerWeapon)
@@ -50,18 +56,20 @@ namespace FairyGate.Combat
             return baseDrainRate * (1 - userStats.StaminaEfficiency);
         }
 
+        // NOTE: This method is currently unused - damage is calculated directly in CombatInteractionManager
         public static DamageResult ProcessDamage(
             CharacterStats attacker,
             WeaponData attackerWeapon,
             CharacterStats defender,
-            InteractionResult interaction)
+            InteractionResult interaction,
+            SkillType skillType = SkillType.Attack)
         {
             var result = new DamageResult();
 
             switch (interaction)
             {
                 case InteractionResult.AttackerWins:
-                    result.damage = CalculateBaseDamage(attacker, attackerWeapon, defender);
+                    result.damage = CalculateBaseDamage(attacker, attackerWeapon, defender, skillType);
                     result.stunDuration = CalculateStunDuration(attackerWeapon.stunDuration, defender);
                     break;
 
@@ -79,7 +87,7 @@ namespace FairyGate.Combat
 
                 case InteractionResult.DefenderKnockedDown:
                     int reducedDamage = ApplyDamageReduction(
-                        CalculateBaseDamage(attacker, attackerWeapon, defender),
+                        CalculateBaseDamage(attacker, attackerWeapon, defender, skillType),
                         CombatConstants.SMASH_VS_DEFENSE_DAMAGE_REDUCTION,
                         defender
                     );
@@ -88,8 +96,8 @@ namespace FairyGate.Combat
                     break;
 
                 case InteractionResult.SimultaneousExecution:
-                    result.damage = CalculateBaseDamage(attacker, attackerWeapon, defender);
-                    result.reflectedDamage = CalculateBaseDamage(defender, attackerWeapon, attacker); // Assuming same weapon for simplicity
+                    result.damage = CalculateBaseDamage(attacker, attackerWeapon, defender, skillType);
+                    result.reflectedDamage = CalculateBaseDamage(defender, attackerWeapon, attacker, skillType); // Assuming same weapon for simplicity
                     break;
             }
 

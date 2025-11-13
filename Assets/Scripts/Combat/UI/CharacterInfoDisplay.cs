@@ -11,6 +11,7 @@ namespace FairyGate.Combat
         [SerializeField] private StaminaSystem staminaSystem;
         [SerializeField] private KnockdownMeterTracker knockdownMeter;
         [SerializeField] private StatusEffectManager statusEffectManager;
+        [SerializeField] private OutlineEffect outlineEffect;
 
         [Header("Display Settings")]
         [SerializeField] private bool showSkillInfo = true;
@@ -18,7 +19,7 @@ namespace FairyGate.Combat
         [SerializeField] private bool showStaminaBar = true;
         [SerializeField] private bool showMeterBar = true;
         [SerializeField] private bool showStatusInfo = true;
-        [SerializeField] private float heightOffset = 3.0f;
+        [SerializeField] private float heightOffset = 3.3f;
         [SerializeField] private int fontSize = 14;
 
         [Header("Bar Settings")]
@@ -27,7 +28,7 @@ namespace FairyGate.Combat
         [SerializeField] private float barSpacing = 3f;
 
         [Header("Skill Icon Settings")]
-        [SerializeField] private int iconFontSize = 48;
+        [SerializeField] private int iconFontSize = 24;
         [SerializeField] private float pulseDuration = 0.5f;
         [SerializeField] private float pulseMinScale = 0.8f;
         [SerializeField] private float pulseMaxScale = 1.2f;
@@ -36,6 +37,8 @@ namespace FairyGate.Combat
         [SerializeField] private bool useTextLabels = false;
 
         private Camera mainCamera;
+        private CombatController playerCombatController; // For target outline tracking
+        private bool isEnemy; // True if this character is an AI enemy
 
         // Cached display data
         private SkillType currentSkill;
@@ -62,6 +65,30 @@ namespace FairyGate.Combat
             if (staminaSystem == null) staminaSystem = GetComponent<StaminaSystem>();
             if (knockdownMeter == null) knockdownMeter = GetComponent<KnockdownMeterTracker>();
             if (statusEffectManager == null) statusEffectManager = GetComponent<StatusEffectManager>();
+
+            // Determine if this character is an enemy (has AI component)
+            isEnemy = GetComponent<SimpleTestAI>() != null;
+
+            // If this is an enemy, set up outline effect and find player
+            if (isEnemy)
+            {
+                // Auto-find or add OutlineEffect component
+                if (outlineEffect == null)
+                {
+                    outlineEffect = GetComponent<OutlineEffect>();
+                    if (outlineEffect == null)
+                    {
+                        outlineEffect = gameObject.AddComponent<OutlineEffect>();
+                    }
+                }
+
+                // Find the player's CombatController for target tracking
+                GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+                if (playerObject != null)
+                {
+                    playerCombatController = playerObject.GetComponent<CombatController>();
+                }
+            }
         }
 
         private void OnEnable()
@@ -95,6 +122,12 @@ namespace FairyGate.Combat
                 maxMeter = knockdownMeter.MaxMeter;
                 currentMeter = knockdownMeter.CurrentMeter;
             }
+
+            // Subscribe to player targeting events (enemies only)
+            if (isEnemy && playerCombatController != null)
+            {
+                playerCombatController.OnTargetChanged += HandleTargetChanged;
+            }
         }
 
         private void OnDisable()
@@ -117,6 +150,12 @@ namespace FairyGate.Combat
             if (knockdownMeter != null)
             {
                 knockdownMeter.OnMeterChanged -= HandleMeterChanged;
+            }
+
+            // Unsubscribe from player targeting events
+            if (isEnemy && playerCombatController != null)
+            {
+                playerCombatController.OnTargetChanged -= HandleTargetChanged;
             }
         }
 
@@ -171,6 +210,16 @@ namespace FairyGate.Combat
         {
             currentMeter = meter;
             maxMeter = max;
+        }
+
+        private void HandleTargetChanged(Transform newTarget)
+        {
+            // Enable outline if player is targeting this enemy, disable otherwise
+            if (outlineEffect != null)
+            {
+                bool isTargeted = newTarget == transform;
+                outlineEffect.SetOutlineEnabled(isTargeted);
+            }
         }
 
         private void UpdateStatusText()
