@@ -47,8 +47,8 @@ namespace FairyGate.Combat
                 }
                 else if (skillSystem.EnableDebugLogs)
                 {
-                    Debug.LogWarning($"{skillSystem.gameObject.name}: State {currentState.GetType().Name} " +
-                                   $"requested transition but GetNextState() returned null");
+                    CombatLogger.LogSkill($"{skillSystem.gameObject.name}: State {currentState.GetType().Name} " +
+                                   $"requested transition but GetNextState() returned null", CombatLogger.LogLevel.Warning);
                 }
             }
         }
@@ -61,14 +61,14 @@ namespace FairyGate.Combat
         {
             if (newState == null)
             {
-                Debug.LogError($"{skillSystem.gameObject.name}: Cannot transition to null state");
+                CombatLogger.LogSkill($"{skillSystem.gameObject.name}: Cannot transition to null state", CombatLogger.LogLevel.Error);
                 return;
             }
 
             if (skillSystem.EnableDebugLogs)
             {
                 string currentStateName = currentState != null ? currentState.GetType().Name : "null";
-                Debug.Log($"{skillSystem.gameObject.name}: Transitioning from {currentStateName} to {newState.GetType().Name}");
+                CombatLogger.LogSkill($"{skillSystem.gameObject.name}: Transitioning from {currentStateName} to {newState.GetType().Name}");
             }
 
             // Exit current state (guaranteed cleanup!)

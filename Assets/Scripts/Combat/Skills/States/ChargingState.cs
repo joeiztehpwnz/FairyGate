@@ -36,7 +36,7 @@ namespace FairyGate.Combat
 
             if (skillSystem.EnableDebugLogs)
             {
-                Debug.Log($"{skillSystem.gameObject.name} started charging {skillType} (charge time: {chargeTime:F2}s)");
+                CombatLogger.LogSkill($"{skillSystem.gameObject.name} started charging {skillType} (charge time: {chargeTime:F2}s)");
             }
         }
 
@@ -48,7 +48,7 @@ namespace FairyGate.Combat
             {
                 if (skillSystem.EnableDebugLogs)
                 {
-                    Debug.Log($"[Classic Mabinogi] {skillSystem.gameObject.name} charging cancelled by knockdown - progress lost!");
+                    CombatLogger.LogSkill($"[Classic Mabinogi] {skillSystem.gameObject.name} charging cancelled by knockdown - progress lost!");
                 }
 
                 // Force transition back to Uncharged state (lose all progress)
@@ -61,9 +61,27 @@ namespace FairyGate.Combat
             {
                 if (skillSystem.EnableDebugLogs)
                 {
-                    Debug.Log($"{skillSystem.gameObject.name} charging paused by stun (progress preserved)");
+                    CombatLogger.LogSkill($"{skillSystem.gameObject.name} charging paused by stun (progress preserved)");
                 }
                 return false; // Don't increment time, don't transition
+            }
+
+            // Drain stamina while charging (punishing stamina management)
+            float drainRate = GetChargingDrainRate();
+            if (drainRate > 0 && skillSystem.StaminaSystem != null)
+            {
+                skillSystem.StaminaSystem.DrainStamina(drainRate, deltaTime);
+
+                // Auto-cancel if stamina depleted
+                if (skillSystem.StaminaSystem.CurrentStamina <= 0)
+                {
+                    if (skillSystem.EnableDebugLogs)
+                    {
+                        CombatLogger.LogSkill($"{skillSystem.gameObject.name} charging cancelled - stamina depleted!");
+                    }
+                    skillSystem.CancelSkill();
+                    return false;
+                }
             }
 
             // Increment elapsed time
@@ -79,7 +97,7 @@ namespace FairyGate.Combat
 
                 if (skillSystem.EnableDebugLogs)
                 {
-                    Debug.Log($"{skillSystem.gameObject.name} {skillType} fully charged and ready to execute");
+                    CombatLogger.LogSkill($"{skillSystem.gameObject.name} {skillType} fully charged and ready to execute");
                 }
 
                 return true; // Trigger transition to Charged
@@ -90,6 +108,9 @@ namespace FairyGate.Combat
 
         public override void OnExit()
         {
+            // Reset movement modifier to prevent stuck states
+            skillSystem.MovementController.SetMovementModifier(1.0f);
+
             base.OnExit();
 
             // Fire event for UI/feedback systems
@@ -129,6 +150,23 @@ namespace FairyGate.Combat
             // Apply dexterity modifier (faster charging with higher dex)
             float modifiedTime = baseChargeTime / (1 + skillSystem.Stats.dexterity / 10f);
             return modifiedTime;
+        }
+
+        /// <summary>
+        /// Gets the stamina drain rate for the current skill while charging.
+        /// </summary>
+        private float GetChargingDrainRate()
+        {
+            return skillType switch
+            {
+                SkillType.Attack => CombatConstants.ATTACK_CHARGING_DRAIN,
+                SkillType.Smash => CombatConstants.SMASH_CHARGING_DRAIN,
+                SkillType.Counter => CombatConstants.COUNTER_CHARGING_DRAIN,
+                SkillType.Windmill => CombatConstants.WINDMILL_CHARGING_DRAIN,
+                SkillType.Defense => CombatConstants.COUNTER_CHARGING_DRAIN, // Same as Counter
+                SkillType.Lunge => CombatConstants.SMASH_CHARGING_DRAIN,     // Same as Smash
+                _ => 0f
+            };
         }
     }
 }

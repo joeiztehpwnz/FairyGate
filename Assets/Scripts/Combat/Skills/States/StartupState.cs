@@ -37,7 +37,7 @@ namespace FairyGate.Combat
 
             if (skillSystem.EnableDebugLogs)
             {
-                Debug.Log($"{skillSystem.gameObject.name} {skillType} startup (duration: {startupTime:F2}s)");
+                CombatLogger.LogSkill($"{skillSystem.gameObject.name} {skillType} startup (duration: {startupTime:F2}s)");
             }
         }
 
@@ -56,6 +56,9 @@ namespace FairyGate.Combat
 
         public override void OnExit()
         {
+            // Reset movement modifier to prevent stuck states
+            skillSystem.MovementController.SetMovementModifier(1.0f);
+
             base.OnExit();
         }
 

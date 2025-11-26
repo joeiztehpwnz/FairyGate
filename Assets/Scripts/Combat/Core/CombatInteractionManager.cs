@@ -1,48 +1,31 @@
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 namespace FairyGate.Combat
 {
-    public class CombatInteractionManager : MonoBehaviour
+    public class CombatInteractionManager : Singleton<CombatInteractionManager>
     {
         [Header("Configuration")]
         [SerializeField] private bool enableDebugLogs = true;
 
-        private static CombatInteractionManager instance;
-        public static CombatInteractionManager Instance => instance;
+        // Component dependencies
+        private CombatObjectPoolManager poolManager;
+        private SkillInteractionResolver interactionResolver;
+        private SpeedConflictResolver speedResolver;
 
-        private SkillExecutionPool executionPool = new SkillExecutionPool();
         private Queue<SkillExecution> pendingExecutions = new Queue<SkillExecution>();
         private List<SkillExecution> waitingDefensiveSkills = new List<SkillExecution>();
 
-        // List pool for Phase 3.3 optimization
-        private static Stack<List<SkillExecution>> skillExecutionListPool = new Stack<List<SkillExecution>>();
-        private static Stack<List<List<SkillExecution>>> nestedListPool = new Stack<List<List<SkillExecution>>>();
-        private static Stack<List<SpeedResolutionGroupResult>> resultsListPool = new Stack<List<SpeedResolutionGroupResult>>();
-
-        private void Awake()
+        protected override void OnSingletonAwake()
         {
-            // Singleton pattern
-            if (instance == null)
-            {
-                instance = this;
-            }
-            else if (instance != this)
-            {
-                Destroy(gameObject);
-                return;
-            }
+            // Initialize components
+            poolManager = new CombatObjectPoolManager();
+            interactionResolver = new SkillInteractionResolver(enableDebugLogs);
+            speedResolver = new SpeedConflictResolver(poolManager);
         }
 
-        private void OnDestroy()
+        protected override void OnSingletonDestroy()
         {
-            // Clear singleton reference when destroyed (scene unload)
-            if (instance == this)
-            {
-                instance = null;
-            }
-
             // Clear all lists and pools to prevent stale references
             if (waitingDefensiveSkills != null)
             {
@@ -55,7 +38,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log("[CombatInteractionManager] OnDestroy - Cleared all lists and pools");
+                CombatLogger.LogCombat("[CombatInteractionManager] OnDestroy - Cleared all lists and pools");
             }
         }
 
@@ -71,7 +54,7 @@ namespace FairyGate.Combat
         /// </summary>
         private void CleanupStaleDefensiveSkills()
         {
-            const float DEFENSIVE_SKILL_TIMEOUT = 5.0f; // 5 seconds max waiting time
+            // Use centralized constant for defensive skill timeout
 
             for (int i = waitingDefensiveSkills.Count - 1; i >= 0; i--)
             {
@@ -83,77 +66,46 @@ namespace FairyGate.Combat
                 {
                     if (enableDebugLogs)
                     {
-                        Debug.LogWarning($"[Scene Cleanup] Removing defensive skill with destroyed references at index {i}");
+                        CombatLogger.LogCombat($"[Scene Cleanup] Removing defensive skill with destroyed references at index {i}", CombatLogger.LogLevel.Warning);
                     }
                     waitingDefensiveSkills.RemoveAt(i);
                     if (defensiveSkill != null)
                     {
-                        executionPool.Return(defensiveSkill);
+                        poolManager.ReturnSkillExecution(defensiveSkill);
                     }
                     continue;
                 }
 
                 // Check if defensive skill has been waiting too long
-                if (Time.time - defensiveSkill.timestamp > DEFENSIVE_SKILL_TIMEOUT)
+                if (Time.time - defensiveSkill.timestamp > CombatConstants.DEFENSIVE_SKILL_TIMEOUT_SECONDS)
                 {
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"[CRITICAL FIX #2/#3] Cleaning up stale {defensiveSkill.combatant.name} {defensiveSkill.skillType} (waited {Time.time - defensiveSkill.timestamp:F1}s)");
+                        CombatLogger.LogCombat($"[CRITICAL FIX #2/#3] Cleaning up stale {defensiveSkill.combatant.name} {defensiveSkill.skillType} (waited {Time.time - defensiveSkill.timestamp:F1}s)");
                     }
 
                     // Force complete the defensive skill on the SkillSystem
                     CompleteDefensiveSkillExecution(defensiveSkill);
 
-                    // NOTE: CompleteDefensiveSkillExecution triggers WaitingState.OnExit which calls
-                    // RemoveWaitingDefensiveSkill, which already removes from list and returns to pool
-                    // So we DON'T need to manually remove here (would cause double-removal)
-                    // The list will be modified by the state transition callback
+                    // SAFETY FALLBACK: If the skill is still in the list after cleanup attempt,
+                    // manually remove it. This handles cases where ForceTransitionToRecovery()
+                    // didn't trigger state transition (skill was already in different state).
+                    if (i < waitingDefensiveSkills.Count && waitingDefensiveSkills[i] == defensiveSkill)
+                    {
+                        if (enableDebugLogs)
+                        {
+                            CombatLogger.LogCombat($"[SAFETY] Manual removal of {defensiveSkill.combatant.name} {defensiveSkill.skillType} (state transition didn't trigger cleanup)", CombatLogger.LogLevel.Warning);
+                        }
+                        waitingDefensiveSkills.RemoveAt(i);
+                        poolManager.ReturnSkillExecution(defensiveSkill);
+                    }
                 }
             }
         }
 
-        // List pool helper methods (Phase 3.3 optimization)
-        private static List<SkillExecution> GetSkillExecutionList()
-        {
-            return skillExecutionListPool.Count > 0 ? skillExecutionListPool.Pop() : new List<SkillExecution>();
-        }
-
-        private static void ReturnSkillExecutionList(List<SkillExecution> list)
-        {
-            list.Clear();
-            skillExecutionListPool.Push(list);
-        }
-
-        private static List<SpeedResolutionGroupResult> GetResultsList()
-        {
-            return resultsListPool.Count > 0 ? resultsListPool.Pop() : new List<SpeedResolutionGroupResult>();
-        }
-
-        private static void ReturnResultsList(List<SpeedResolutionGroupResult> list)
-        {
-            list.Clear();
-            resultsListPool.Push(list);
-        }
-
-        private static List<List<SkillExecution>> GetNestedList()
-        {
-            return nestedListPool.Count > 0 ? nestedListPool.Pop() : new List<List<SkillExecution>>();
-        }
-
-        private static void ReturnNestedList(List<List<SkillExecution>> list)
-        {
-            // Return inner lists to pool first
-            foreach (var innerList in list)
-            {
-                ReturnSkillExecutionList(innerList);
-            }
-            list.Clear();
-            nestedListPool.Push(list);
-        }
-
         public void ProcessSkillExecution(SkillSystem skillSystem, SkillType skillType)
         {
-            var execution = executionPool.Get();
+            var execution = poolManager.GetSkillExecution();
             execution.skillSystem = skillSystem;
             execution.skillType = skillType;
             execution.combatant = skillSystem.GetComponent<CombatController>();
@@ -162,6 +114,9 @@ namespace FairyGate.Combat
             if (SpeedResolver.IsOffensiveSkill(skillType))
             {
                 pendingExecutions.Enqueue(execution);
+
+                // Track execution to prevent premature slot release
+                SkillExecutionTracker.Instance.OnSkillQueued(execution.combatant, skillType);
             }
             else if (SpeedResolver.IsDefensiveSkill(skillType))
             {
@@ -179,11 +134,11 @@ namespace FairyGate.Combat
             // NULL SAFETY: Check if skillSystem is destroyed before accessing properties
             if (skillSystem == null || !skillSystem)
             {
-                Debug.LogWarning($"<color=red>[Scene Cleanup] RemoveWaitingDefensiveSkill called with null/destroyed SkillSystem</color>");
+                CombatLogger.LogCombat($"<color=red>[Scene Cleanup] RemoveWaitingDefensiveSkill called with null/destroyed SkillSystem</color>", CombatLogger.LogLevel.Warning);
                 return;
             }
 
-            Debug.Log($"<color=orange>[CombatInteractionManager] RemoveWaitingDefensiveSkill called for {skillSystem.gameObject.name}, waiting list has {waitingDefensiveSkills.Count} entries</color>");
+            CombatLogger.LogCombat($"<color=orange>[CombatInteractionManager] RemoveWaitingDefensiveSkill called for {skillSystem.gameObject.name}, waiting list has {waitingDefensiveSkills.Count} entries</color>");
 
             // Find and remove the SkillExecution associated with this SkillSystem
             for (int i = waitingDefensiveSkills.Count - 1; i >= 0; i--)
@@ -193,35 +148,35 @@ namespace FairyGate.Combat
                 // NULL SAFETY: Skip destroyed entries
                 if (defensiveSkill == null || defensiveSkill.skillSystem == null || !defensiveSkill.skillSystem)
                 {
-                    Debug.LogWarning($"<color=yellow>[Scene Cleanup] Skipping destroyed entry at index {i}</color>");
+                    CombatLogger.LogCombat($"<color=yellow>[Scene Cleanup] Skipping destroyed entry at index {i}</color>", CombatLogger.LogLevel.Warning);
                     waitingDefensiveSkills.RemoveAt(i);
                     if (defensiveSkill != null)
                     {
-                        executionPool.Return(defensiveSkill);
+                        poolManager.ReturnSkillExecution(defensiveSkill);
                     }
                     continue;
                 }
 
                 if (defensiveSkill.skillSystem == skillSystem)
                 {
-                    Debug.Log($"<color=lime>[State Pattern Cleanup] Found and removing {defensiveSkill.combatant.name} {defensiveSkill.skillType} from waiting list (index {i})</color>");
+                    CombatLogger.LogCombat($"<color=lime>[State Pattern Cleanup] Found and removing {defensiveSkill.combatant.name} {defensiveSkill.skillType} from waiting list (index {i})</color>");
 
                     waitingDefensiveSkills.RemoveAt(i);
-                    executionPool.Return(defensiveSkill);
+                    poolManager.ReturnSkillExecution(defensiveSkill);
 
-                    Debug.Log($"<color=lime>[State Pattern Cleanup] Removal complete, waiting list now has {waitingDefensiveSkills.Count} entries</color>");
+                    CombatLogger.LogCombat($"<color=lime>[State Pattern Cleanup] Removal complete, waiting list now has {waitingDefensiveSkills.Count} entries</color>");
                     return; // Found and removed
                 }
             }
 
-            Debug.LogWarning($"<color=red>[State Pattern Cleanup] Could not find {skillSystem.gameObject.name} in waiting list!</color>");
+            CombatLogger.LogCombat($"<color=red>[State Pattern Cleanup] Could not find {skillSystem.gameObject.name} in waiting list!</color>", CombatLogger.LogLevel.Warning);
         }
 
         private void ProcessPendingExecutions()
         {
             if (pendingExecutions.Count == 0) return;
 
-            var offensiveSkills = GetSkillExecutionList(); // Phase 3.3: Use pooled list
+            var offensiveSkills = poolManager.GetSkillExecutionList();
 
             // Collect all simultaneous offensive executions
             while (pendingExecutions.Count > 0)
@@ -234,7 +189,7 @@ namespace FairyGate.Combat
                 else
                 {
                     // Execution too old, return to pool
-                    executionPool.Return(execution);
+                    poolManager.ReturnSkillExecution(execution);
                 }
             }
 
@@ -242,7 +197,7 @@ namespace FairyGate.Combat
             {
                 // Single offensive skill
                 ProcessSingleOffensiveSkill(offensiveSkills[0]);
-                executionPool.Return(offensiveSkills[0]);
+                poolManager.ReturnSkillExecution(offensiveSkills[0]);
             }
             else if (offensiveSkills.Count > 1)
             {
@@ -251,22 +206,25 @@ namespace FairyGate.Combat
                 // Return all to pool after processing
                 foreach (var skill in offensiveSkills)
                 {
-                    executionPool.Return(skill);
+                    poolManager.ReturnSkillExecution(skill);
                 }
             }
 
-            // Return list to pool (Phase 3.3)
-            ReturnSkillExecutionList(offensiveSkills);
+            // Return list to pool
+            poolManager.ReturnSkillExecutionList(offensiveSkills);
         }
 
         private void ProcessSingleOffensiveSkill(SkillExecution offensiveSkill)
         {
+            // Notify tracker that processing has started
+            SkillExecutionTracker.Instance.OnSkillProcessingStarted(offensiveSkill.combatant);
+
             // Check for defensive responses
             var validDefenses = GetValidDefensiveResponses(offensiveSkill);
 
             if (enableDebugLogs && offensiveSkill.skillType == SkillType.RangedAttack)
             {
-                Debug.Log($"[RangedAttack Debug] {offensiveSkill.combatant.name} RangedAttack found {validDefenses.Count} defensive responses");
+                CombatLogger.LogCombat($"[RangedAttack Debug] {offensiveSkill.combatant.name} RangedAttack found {validDefenses.Count} defensive responses");
             }
 
             if (validDefenses.Count == 0)
@@ -288,14 +246,23 @@ namespace FairyGate.Combat
                 }
             }
 
-            // Return list to pool (Phase 3.3)
-            ReturnSkillExecutionList(validDefenses);
+            // Return list to pool
+            poolManager.ReturnSkillExecutionList(validDefenses);
+
+            // Notify tracker that processing is complete - slot can now be released
+            SkillExecutionTracker.Instance.OnSkillProcessingCompleted(offensiveSkill.combatant);
         }
 
         private void ProcessMultipleOffensiveSkills(List<SkillExecution> offensiveSkills)
         {
+            // Notify tracker that all skills are starting processing
+            foreach (var skill in offensiveSkills)
+            {
+                SkillExecutionTracker.Instance.OnSkillProcessingStarted(skill.combatant);
+            }
+
             // Resolve speed conflicts between offensive skills
-            var speedResults = ResolveSpeedConflicts(offensiveSkills);
+            var speedResults = speedResolver.ResolveSpeedConflicts(offensiveSkills);
 
             foreach (var result in speedResults)
             {
@@ -312,7 +279,7 @@ namespace FairyGate.Combat
                         }
                         else if (enableDebugLogs)
                         {
-                            Debug.Log($"[CRITICAL FIX #1] {execution.combatant.name} died mid-execution, skipping {execution.skillType}");
+                            CombatLogger.LogCombat($"[CRITICAL FIX #1] {execution.combatant.name} died mid-execution, skipping {execution.skillType}");
                         }
                     }
                 }
@@ -324,31 +291,39 @@ namespace FairyGate.Combat
                 }
             }
 
-            // Return results list to pool (Phase 3.3)
-            ReturnResultsList(speedResults);
+            // Return results list to pool
+            poolManager.ReturnResultsList(speedResults);
+
+            // Notify tracker that all skills have completed processing - slots can now be released
+            foreach (var skill in offensiveSkills)
+            {
+                SkillExecutionTracker.Instance.OnSkillProcessingCompleted(skill.combatant);
+            }
         }
 
         private List<SkillExecution> GetValidDefensiveResponses(SkillExecution offensiveSkill)
         {
-            var validResponses = GetSkillExecutionList(); // Phase 3.3: Use pooled list
+            var validResponses = poolManager.GetSkillExecutionList();
 
             if (enableDebugLogs && offensiveSkill.skillType == SkillType.RangedAttack)
             {
-                Debug.Log($"[RangedAttack Debug] Checking {waitingDefensiveSkills.Count} waiting defensive skills");
-                foreach (var defensiveSkill in waitingDefensiveSkills.ToList())
+                CombatLogger.LogCombat($"[RangedAttack Debug] Checking {waitingDefensiveSkills.Count} waiting defensive skills");
+                foreach (var defensiveSkill in waitingDefensiveSkills)
                 {
-                    Debug.Log($"[RangedAttack Debug] Found waiting {defensiveSkill.skillType} from {defensiveSkill.combatant.name}");
+                    CombatLogger.LogCombat($"[RangedAttack Debug] Found waiting {defensiveSkill.skillType} from {defensiveSkill.combatant.name}");
                 }
             }
 
-            foreach (var defensiveSkill in waitingDefensiveSkills.ToList())
+            // Create a copy to avoid modification during iteration
+            var defensiveSkillsCopy = new List<SkillExecution>(waitingDefensiveSkills);
+            foreach (var defensiveSkill in defensiveSkillsCopy)
             {
                 // Check if defensive skill can respond to this offensive skill
                 bool canRespond = CanDefensiveSkillRespond(defensiveSkill, offensiveSkill);
 
                 if (enableDebugLogs && offensiveSkill.skillType == SkillType.RangedAttack)
                 {
-                    Debug.Log($"[RangedAttack Debug] {defensiveSkill.combatant.name} {defensiveSkill.skillType} can respond: {canRespond}");
+                    CombatLogger.LogCombat($"[RangedAttack Debug] {defensiveSkill.combatant.name} {defensiveSkill.skillType} can respond: {canRespond}");
                 }
 
                 if (canRespond)
@@ -384,7 +359,7 @@ namespace FairyGate.Combat
             {
                 if (enableDebugLogs && offensiveSkill.skillType == SkillType.RangedAttack)
                 {
-                    Debug.Log($"[RangedAttack Debug] SpeedResolver.CanInteract returned FALSE for {offensiveSkill.skillType} vs {defensiveSkill.skillType}");
+                    CombatLogger.LogCombat($"[RangedAttack Debug] SpeedResolver.CanInteract returned FALSE for {offensiveSkill.skillType} vs {defensiveSkill.skillType}");
                 }
                 return false;
             }
@@ -397,14 +372,14 @@ namespace FairyGate.Combat
                 {
                     float distance = Vector3.Distance(offensiveSkill.combatant.transform.position, defensiveSkill.combatant.transform.position);
                     float attackerRange = attackerWeapon?.WeaponData?.range ?? 0f;
-                    Debug.Log($"[RangedAttack Debug] Attacker {offensiveSkill.combatant.name} OUT OF RANGE: distance={distance:F1}, attacker weapon range={attackerRange:F1}");
+                    CombatLogger.LogCombat($"[RangedAttack Debug] Attacker {offensiveSkill.combatant.name} OUT OF RANGE: distance={distance:F1}, attacker weapon range={attackerRange:F1}");
                 }
                 return false;
             }
 
             if (enableDebugLogs && offensiveSkill.skillType == SkillType.RangedAttack)
             {
-                Debug.Log($"[RangedAttack Debug] All checks PASSED - {defensiveSkill.combatant.name} {defensiveSkill.skillType} can respond!");
+                CombatLogger.LogCombat($"[RangedAttack Debug] All checks PASSED - {defensiveSkill.combatant.name} {defensiveSkill.skillType} can respond!");
             }
 
             return true;
@@ -412,11 +387,11 @@ namespace FairyGate.Combat
 
         private void ProcessSkillInteraction(SkillExecution offensiveSkill, SkillExecution defensiveSkill)
         {
-            var interaction = DetermineInteraction(offensiveSkill.skillType, defensiveSkill.skillType);
+            var interaction = interactionResolver.DetermineInteraction(offensiveSkill.skillType, defensiveSkill.skillType);
 
             if (enableDebugLogs)
             {
-                Debug.Log($"Processing interaction: {offensiveSkill.combatant.name} {offensiveSkill.skillType} vs " +
+                CombatLogger.LogCombat($"Processing interaction: {offensiveSkill.combatant.name} {offensiveSkill.skillType} vs " +
                          $"{defensiveSkill.combatant.name} {defensiveSkill.skillType} = {interaction}");
             }
 
@@ -428,283 +403,68 @@ namespace FairyGate.Combat
 
             if (attackerStats == null || defenderStats == null || attackerWeapon == null || defenderWeapon == null)
             {
-                Debug.LogError("Missing required components for skill interaction");
+                CombatLogger.LogCombat("Missing required components for skill interaction", CombatLogger.LogLevel.Error);
                 return;
             }
 
             // Process damage and effects based on interaction
             // Note: ProcessInteractionEffects will handle completing defensive skills conditionally
-            ProcessInteractionEffects(interaction, offensiveSkill, defensiveSkill, attackerStats, defenderStats, attackerWeapon, defenderWeapon);
+            interactionResolver.ProcessInteractionEffects(
+                interaction,
+                offensiveSkill,
+                defensiveSkill,
+                attackerStats,
+                defenderStats,
+                attackerWeapon,
+                defenderWeapon,
+                CompleteDefensiveSkillExecution);
         }
 
-        private InteractionResult DetermineInteraction(SkillType offensive, SkillType defensive)
-        {
-            // All interactions from the matrix
-            switch (offensive)
-            {
-                case SkillType.Attack:
-                    switch (defensive)
-                    {
-                        case SkillType.Defense: return InteractionResult.AttackerStunned; // Attack vs Defense → Attacker stunned, defender blocks
-                        case SkillType.Counter: return InteractionResult.CounterReflection; // Attack vs Counter → Counter reflection
-                    }
-                    break;
-
-                case SkillType.Smash:
-                    switch (defensive)
-                    {
-                        case SkillType.Defense: return InteractionResult.DefenderKnockedDown; // Smash vs Defense → Defender knocked down, takes 75% reduced damage
-                        case SkillType.Counter: return InteractionResult.CounterReflection; // Smash vs Counter → Counter reflection
-                    }
-                    break;
-
-                case SkillType.Windmill:
-                    switch (defensive)
-                    {
-                        case SkillType.Defense: return InteractionResult.DefenderBlocks; // Windmill vs Defense → No status effects, defender blocks
-                        case SkillType.Counter: return InteractionResult.WindmillBreaksCounter; // Windmill vs Counter → Windmill breaks counter, knocks down defender
-                    }
-                    break;
-
-                case SkillType.RangedAttack:
-                    switch (defensive)
-                    {
-                        case SkillType.Defense: return InteractionResult.DefenderBlocks; // RangedAttack vs Defense → Defender blocks 100% damage
-                        case SkillType.Counter: return InteractionResult.CounterIneffective; // RangedAttack vs Counter → Counter is ineffective
-                    }
-                    break;
-
-                case SkillType.Lunge:
-                    switch (defensive)
-                    {
-                        case SkillType.Defense: return InteractionResult.AttackerStunned; // Lunge vs Defense → Attacker stunned, defender blocks
-                        case SkillType.Counter: return InteractionResult.CounterReflection; // Lunge vs Counter → Counter reflection
-                    }
-                    break;
-            }
-
-            return InteractionResult.NoInteraction;
-        }
-
-        /// <summary>
-        /// Helper method to safely get combatant name (handles destroyed objects)
-        /// </summary>
-        private string GetSafeCombatantName(SkillExecution execution)
-        {
-            if (execution == null || execution.combatant == null || !execution.combatant)
-            {
-                return "[Destroyed]";
-            }
-            return execution.combatant.name;
-        }
-
-        private void ProcessInteractionEffects(
-            InteractionResult interaction,
-            SkillExecution attacker,
-            SkillExecution defender,
-            CharacterStats attackerStats,
-            CharacterStats defenderStats,
-            WeaponData attackerWeapon,
-            WeaponData defenderWeapon)
-        {
-            // NULL SAFETY: Check if combatants are destroyed (scene reload, death during processing)
-            if (attacker == null || attacker.combatant == null || !attacker.combatant ||
-                defender == null || defender.combatant == null || !defender.combatant)
-            {
-                Debug.LogWarning($"[Scene Cleanup] ProcessInteractionEffects aborted - attacker or defender destroyed");
-                return;
-            }
-
-            var attackerHealth = attacker.combatant.GetComponent<HealthSystem>();
-            var defenderHealth = defender.combatant.GetComponent<HealthSystem>();
-            var attackerStatusEffects = attacker.combatant.GetComponent<StatusEffectManager>();
-            var defenderStatusEffects = defender.combatant.GetComponent<StatusEffectManager>();
-            var defenderKnockdownMeter = defender.combatant.GetComponent<KnockdownMeterTracker>();
-
-            // Null safety checks
-            if (attackerHealth == null || defenderHealth == null ||
-                attackerStatusEffects == null || defenderStatusEffects == null ||
-                defenderKnockdownMeter == null)
-            {
-                Debug.LogWarning($"[Scene Cleanup] ProcessInteractionEffects aborted - missing components");
-                return;
-            }
-
-            switch (interaction)
-            {
-                case InteractionResult.AttackerStunned: // Attack vs Defense
-                    // Attacker stunned, defender blocks (0 damage)
-                    attackerStatusEffects.ApplyStun(attackerWeapon.stunDuration);
-                    defenderStatusEffects.ApplyStun(attackerWeapon.stunDuration * 0.5f); // Defender receives half stun
-
-                    // ONE-HIT BLOCK: Defense breaks after blocking first hit
-                    defender.skillSystem.MarkDefenseBlocked();
-
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"{GetSafeCombatantName(attacker)} attack blocked by {GetSafeCombatantName(defender)} defense (Defense broken after block)");
-                    }
-
-                    // Defense breaks immediately after blocking
-                    CompleteDefensiveSkillExecution(defender);
-                    break;
-
-                case InteractionResult.CounterReflection: // Any skill vs Counter
-                    // Attacker knocked down, defender takes 0 damage, reflects calculated damage back
-                    Vector3 counterKnockbackDirection = (attacker.combatant.transform.position - defender.combatant.transform.position).normalized;
-                    Vector3 counterDisplacement = counterKnockbackDirection * CombatConstants.COUNTER_KNOCKBACK_DISTANCE;
-                    attackerStatusEffects.ApplyInteractionKnockdown(counterDisplacement);
-                    int reflectedDamage = DamageCalculator.CalculateCounterReflection(attackerStats, attackerWeapon);
-                    attackerHealth.TakeDamage(reflectedDamage, defender.combatant.transform);
-
-                    // Register hit dealt for defender's pattern tracking (counter reflected damage)
-                    WeaponController defenderWeaponController = defender.combatant.GetComponent<WeaponController>();
-                    defenderWeaponController?.RegisterHitDealt(attacker.combatant.transform);
-
-                    // Note: Counter knockdown overrides stun, but stun should technically be applied first
-                    // The knockdown from counter is stronger, so the stun effect is immediately overridden
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"{GetSafeCombatantName(defender)} counter reflected {reflectedDamage} damage to {GetSafeCombatantName(attacker)}");
-                    }
-                    // Complete defensive skill
-                    CompleteDefensiveSkillExecution(defender);
-                    break;
-
-                case InteractionResult.CounterIneffective: // RangedAttack vs Counter
-                    // Counter is ineffective against ranged attacks
-                    // Check if ranged attack hit
-                    bool counterRangedAttackHit = attacker.skillSystem.LastRangedAttackHit;
-
-                    if (counterRangedAttackHit)
-                    {
-                        // HIT: Defender takes full damage, no reflection
-                        int rangedDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats, SkillType.RangedAttack);
-                        defenderHealth.TakeDamage(rangedDamage, attacker.combatant.transform);
-
-                        // Register hit dealt for attacker's pattern tracking
-                        WeaponController rangedAttackerWeaponController = attacker.combatant.GetComponent<WeaponController>();
-                        rangedAttackerWeaponController?.RegisterHitDealt(defender.combatant.transform);
-
-                        // Apply universal hit stun
-                        defenderStatusEffects.ApplyStun(attackerWeapon.stunDuration);
-
-                        // Build knockdown meter
-                        defenderKnockdownMeter.AddMeterBuildup(rangedDamage, attackerStats, attacker.combatant.transform);
-
-                        if (enableDebugLogs)
-                        {
-                            Debug.Log($"{GetSafeCombatantName(defender)} Counter ineffective against {GetSafeCombatantName(attacker)} RangedAttack - took {rangedDamage} damage");
-                        }
-
-                        // Complete Counter (WaitingState.OnExit handles cleanup)
-                        CompleteDefensiveSkillExecution(defender);
-                    }
-                    else
-                    {
-                        // MISS: Counter takes 0 damage but still completes (wasted counter)
-                        if (enableDebugLogs)
-                        {
-                            Debug.Log($"{GetSafeCombatantName(attacker)} RangedAttack missed - {GetSafeCombatantName(defender)} Counter wasted");
-                        }
-
-                        // Complete Counter (WaitingState.OnExit handles cleanup)
-                        CompleteDefensiveSkillExecution(defender);
-                    }
-                    break;
-
-                case InteractionResult.DefenderKnockedDown: // Smash vs Defense
-                    // Defender knocked down, takes 75% reduced damage
-                    Vector3 smashKnockbackDirection = (defender.combatant.transform.position - attacker.combatant.transform.position).normalized;
-                    Vector3 smashDisplacement = smashKnockbackDirection * CombatConstants.SMASH_KNOCKBACK_DISTANCE;
-                    defenderStatusEffects.ApplyInteractionKnockdown(smashDisplacement);
-                    int baseDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats, attacker.skillType);
-                    int reducedDamage = DamageCalculator.ApplyDamageReduction(baseDamage, CombatConstants.SMASH_VS_DEFENSE_DAMAGE_REDUCTION, defenderStats);
-                    defenderHealth.TakeDamage(reducedDamage, attacker.combatant.transform);
-
-                    // Register hit dealt for attacker's pattern tracking
-                    WeaponController attackerWeaponController = attacker.combatant.GetComponent<WeaponController>();
-                    attackerWeaponController?.RegisterHitDealt(defender.combatant.transform);
-
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"{GetSafeCombatantName(attacker)} smash broke through {GetSafeCombatantName(defender)} defense for {reducedDamage} damage");
-                    }
-                    // Complete defensive skill
-                    CompleteDefensiveSkillExecution(defender);
-                    break;
-
-                case InteractionResult.DefenderBlocks: // Windmill vs Defense OR RangedAttack vs Defense
-                    if (attacker.skillType == SkillType.RangedAttack)
-                    {
-                        // Check if the ranged attack hit or missed
-                        bool rangedAttackHit = attacker.skillSystem.LastRangedAttackHit;
-
-                        if (rangedAttackHit)
-                        {
-                            // HIT: Defense blocks 100% of ranged attack damage (complete block)
-                            // ONE-HIT BLOCK: Defense breaks after blocking first hit
-                            defender.skillSystem.MarkDefenseBlocked();
-
-                            if (enableDebugLogs)
-                            {
-                                Debug.Log($"{GetSafeCombatantName(defender)} completely blocked {GetSafeCombatantName(attacker)} RangedAttack (Defense broken after block)");
-                            }
-
-                            // Defense breaks immediately after blocking
-                            CompleteDefensiveSkillExecution(defender);
-                        }
-                        else
-                        {
-                            // MISS: Defense takes 0 damage, but is consumed (one block per activation)
-                            if (enableDebugLogs)
-                            {
-                                Debug.Log($"{GetSafeCombatantName(attacker)} RangedAttack missed - {GetSafeCombatantName(defender)} Defense consumed (no block)");
-                            }
-
-                            // Complete Defense (WaitingState.OnExit handles cleanup)
-                            CompleteDefensiveSkillExecution(defender);
-                        }
-                    }
-                    else
-                    {
-                        // Windmill vs Defense: Blocked cleanly (0 damage)
-                        // ONE-HIT BLOCK: Defense breaks after blocking first hit
-                        defender.skillSystem.MarkDefenseBlocked();
-
-                        if (enableDebugLogs)
-                        {
-                            Debug.Log($"{GetSafeCombatantName(defender)} blocked {GetSafeCombatantName(attacker)} windmill (Defense broken after block)");
-                        }
-
-                        // Defense breaks immediately after blocking
-                        CompleteDefensiveSkillExecution(defender);
-                    }
-                    break;
-
-                case InteractionResult.WindmillBreaksCounter: // Windmill vs Counter
-                    // Windmill breaks through counter, knocks down defender, deals normal damage
-                    Vector3 windmillKnockbackDirection = (defender.combatant.transform.position - attacker.combatant.transform.position).normalized;
-                    Vector3 windmillDisplacement = windmillKnockbackDirection * CombatConstants.WINDMILL_KNOCKBACK_DISTANCE;
-                    defenderStatusEffects.ApplyInteractionKnockdown(windmillDisplacement);
-                    int windmillDamage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, defenderStats, attacker.skillType);
-                    defenderHealth.TakeDamage(windmillDamage, attacker.combatant.transform);
-
-                    // Register hit dealt for attacker's pattern tracking
-                    WeaponController windmillAttackerWeaponController = attacker.combatant.GetComponent<WeaponController>();
-                    windmillAttackerWeaponController?.RegisterHitDealt(defender.combatant.transform);
-
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"{GetSafeCombatantName(attacker)} windmill broke through {GetSafeCombatantName(defender)} counter for {windmillDamage} damage and knockdown");
-                    }
-                    // Complete defensive skill
-                    CompleteDefensiveSkillExecution(defender);
-                    break;
-            }
-        }
 
         private void ExecuteOffensiveSkillDirectly(SkillExecution execution)
+        {
+            if (!ValidateOffensiveExecution(execution))
+                return;
+
+            if (HandleSpecialSkillExecution(execution))
+                return;
+
+            var targetTransform = execution.combatant.CurrentTarget;
+            if (targetTransform == null) return;
+
+            var target = targetTransform.GetComponent<CombatController>();
+            if (target == null) return;
+
+            // Final faction check - don't attack non-hostiles
+            if (!execution.combatant.IsHostileTo(target))
+            {
+                if (enableDebugLogs)
+                {
+                    CombatLogger.LogCombat($"{execution.combatant.name} cancelled attack on non-hostile {target.name}");
+                }
+                return;
+            }
+
+            var targetComponents = GetTargetComponents(target);
+            if (targetComponents == null) return;
+
+            var attackerStats = execution.combatant.Stats;
+            var attackerWeapon = execution.combatant.GetComponent<WeaponController>()?.WeaponData;
+            if (attackerStats == null || attackerWeapon == null) return;
+
+            if (HandleRangedAttackMiss(execution, target))
+                return;
+
+            int damage = ApplySkillDamage(execution, target, targetComponents, attackerStats, attackerWeapon, out bool wasCritical);
+            ApplySkillEffects(execution, target, targetComponents, attackerStats, attackerWeapon, damage, wasCritical);
+
+            if (enableDebugLogs)
+            {
+                CombatLogger.LogCombat($"{execution.combatant.name} {execution.skillType} hit {target.name} for {damage} damage");
+            }
+        }
+
+        private bool ValidateOffensiveExecution(SkillExecution execution)
         {
             // CRITICAL FIX #1: Safety check - don't execute if attacker is dead
             var attackerHealth = execution.combatant.GetComponent<HealthSystem>();
@@ -712,22 +472,34 @@ namespace FairyGate.Combat
             {
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"[CRITICAL FIX #1] {execution.combatant.name} is dead, cannot execute {execution.skillType}");
+                    CombatLogger.LogCombat($"[CRITICAL FIX #1] {execution.combatant.name} is dead, cannot execute {execution.skillType}");
                 }
-                return;
+                return false;
             }
+            return true;
+        }
 
+        private bool HandleSpecialSkillExecution(SkillExecution execution)
+        {
             // WINDMILL: AoE skill that hits all enemies in range
             if (execution.skillType == SkillType.Windmill)
             {
                 ExecuteWindmillAoE(execution);
-                return;
+                return true;
             }
+            return false;
+        }
 
-            // All other skills: single-target execution
-            var target = execution.combatant.CurrentTarget;
-            if (target == null) return;
+        private class TargetComponents
+        {
+            public HealthSystem Health;
+            public KnockdownMeterTracker KnockdownMeter;
+            public StatusEffectManager StatusEffects;
+            public CharacterStats Stats;
+        }
 
+        private TargetComponents GetTargetComponents(CombatController target)
+        {
             var targetHealth = target.GetComponent<HealthSystem>();
             var targetKnockdownMeter = target.GetComponent<KnockdownMeterTracker>();
             var targetStatusEffects = target.GetComponent<StatusEffectManager>();
@@ -736,17 +508,23 @@ namespace FairyGate.Combat
             Debug.Assert(targetHealth != null, $"HealthSystem is null on {target.gameObject.name}");
             Debug.Assert(targetKnockdownMeter != null, $"KnockdownMeterTracker is null on {target.gameObject.name}");
             Debug.Assert(targetStatusEffects != null, $"StatusEffectManager is null on {target.gameObject.name}");
-            if (targetHealth == null) return; // Fallback for production builds
+            if (targetHealth == null) return null; // Fallback for production builds
 
-            var attackerStats = execution.combatant.Stats;
             var targetStats = targetHealth.GetComponent<CombatController>()?.Stats;
-            var attackerWeapon = execution.combatant.GetComponent<WeaponController>()?.WeaponData;
-
-            Debug.Assert(attackerStats != null, $"CharacterStats is null on {execution.combatant.gameObject.name}");
             Debug.Assert(targetStats != null, $"CharacterStats is null on {target.gameObject.name}");
-            Debug.Assert(attackerWeapon != null, $"WeaponData is null on {execution.combatant.gameObject.name}");
-            if (attackerStats == null || targetStats == null || attackerWeapon == null) return; // Fallback for production builds
+            if (targetStats == null) return null;
 
+            return new TargetComponents
+            {
+                Health = targetHealth,
+                KnockdownMeter = targetKnockdownMeter,
+                StatusEffects = targetStatusEffects,
+                Stats = targetStats
+            };
+        }
+
+        private bool HandleRangedAttackMiss(SkillExecution execution, CombatController target)
+        {
             // SPECIAL HANDLING FOR RANGED ATTACK: Check if it hit
             if (execution.skillType == SkillType.RangedAttack)
             {
@@ -757,24 +535,57 @@ namespace FairyGate.Combat
                     // MISS: No damage, no effects
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{execution.combatant.name} RangedAttack missed {target.name}");
+                        CombatLogger.LogCombat($"{execution.combatant.name} RangedAttack missed {target.name}");
                     }
-                    return; // Skip all damage and effects
+                    return true; // Indicates miss occurred
                 }
-
-                // If we reach here, the ranged attack hit - continue with normal damage application
             }
+            return false; // No miss occurred
+        }
+
+        private int ApplySkillDamage(SkillExecution execution, CombatController target, TargetComponents targetComponents,
+            CharacterStats attackerStats, WeaponData attackerWeapon, out bool wasCritical)
+        {
+            // N+1 System: Roll for critical hit
+            wasCritical = DamageCalculator.RollCriticalHit(attackerStats);
 
             // Calculate and apply damage (with skill-specific damage multiplier)
-            int damage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, targetStats, execution.skillType);
-            targetHealth.TakeDamage(damage, execution.combatant.transform);
+            int damage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, targetComponents.Stats, execution.skillType);
+
+            // Apply critical damage multiplier if critical hit
+            if (wasCritical)
+            {
+                damage = DamageCalculator.CalculateCriticalDamage(damage);
+            }
+
+            targetComponents.Health.TakeDamage(damage, execution.combatant.transform);
 
             // Register hit dealt for attacker's pattern tracking
             WeaponController executionWeaponController = execution.combatant.GetComponent<WeaponController>();
             executionWeaponController?.RegisterHitDealt(target.transform);
 
+            // N+1 System: Only basic Attack creates timing windows (weapon combo extension)
+            // Skills like Smash/Windmill are finishers, not starters
+            if (executionWeaponController != null && execution.skillType == SkillType.Attack)
+            {
+                executionWeaponController.OnHitLanded(target.transform, wasCritical);
+            }
+
+            return damage;
+        }
+
+        private void ApplySkillEffects(SkillExecution execution, CombatController target, TargetComponents targetComponents,
+            CharacterStats attackerStats, WeaponData attackerWeapon, int damage, bool wasCritical)
+        {
             // UNIVERSAL: All hits apply stun (Mabinogi three-tier CC system)
-            targetStatusEffects.ApplyStun(attackerWeapon.stunDuration);
+            // N+1 System: Calculate stun with Focus resistance and critical multiplier
+            float calculatedStun = DamageCalculator.CalculateStunDuration(
+                attackerWeapon.stunDuration,
+                targetComponents.Stats,
+                wasCritical
+            );
+            // Use ApplyCalculatedStun to prevent double Focus application
+            targetComponents.StatusEffects.ApplyCalculatedStun(calculatedStun);
 
             // Apply skill-specific effects
             switch (execution.skillType)
@@ -783,7 +594,8 @@ namespace FairyGate.Combat
                 case SkillType.RangedAttack:
                 case SkillType.Lunge:
                     // Build knockdown meter (stun already applied above)
-                    targetKnockdownMeter.AddMeterBuildup(damage, attackerStats, execution.combatant.transform);
+                    // N+1 System: Pass weapon data for knockdown rate modifier
+                    targetComponents.KnockdownMeter.AddMeterBuildup(damage, attackerStats, attackerWeapon, execution.combatant.transform);
                     break;
 
                 case SkillType.Smash:
@@ -794,84 +606,104 @@ namespace FairyGate.Combat
                     Vector3 directHitDisplacement = directHitDirection * (execution.skillType == SkillType.Smash
                         ? CombatConstants.SMASH_KNOCKBACK_DISTANCE
                         : CombatConstants.WINDMILL_KNOCKBACK_DISTANCE);
-                    targetKnockdownMeter.TriggerImmediateKnockdown(directHitDisplacement);
+                    targetComponents.KnockdownMeter.TriggerImmediateKnockdown(directHitDisplacement);
                     break;
-            }
-
-            if (enableDebugLogs)
-            {
-                Debug.Log($"{execution.combatant.name} {execution.skillType} hit {target.name} for {damage} damage");
             }
         }
 
         private void ExecuteWindmillAoE(SkillExecution execution)
         {
             var attackerStats = execution.combatant.Stats;
-            var attackerWeapon = execution.combatant.GetComponent<WeaponController>()?.WeaponData;
+            var attackerWeapon = execution.combatant.GetComponent<WeaponController>();
 
-            if (attackerStats == null || attackerWeapon == null)
+            if (attackerStats == null || attackerWeapon?.WeaponData == null)
             {
-                Debug.LogError($"Windmill execution failed: missing stats or weapon on {execution.combatant.name}");
+                CombatLogger.LogCombat($"Windmill execution failed: missing stats or weapon on {execution.combatant.name}", CombatLogger.LogLevel.Error);
                 return;
             }
 
-            // Get Windmill range
+            var targets = GetWindmillTargets(execution);
+
+            foreach (var target in targets)
+            {
+                ExecuteWindmillOnTarget(execution, target, attackerStats, attackerWeapon.WeaponData);
+            }
+
+            NotifyTrackerWindmillExecuted(execution, targets.Count);
+        }
+
+        /// <summary>
+        /// Finds all valid targets for Windmill AoE attack.
+        /// Filters out self, dead targets, allies, and invalid combatants.
+        /// </summary>
+        private List<CombatController> GetWindmillTargets(SkillExecution execution)
+        {
+            var targets = new List<CombatController>();
             float windmillRange = CombatConstants.WINDMILL_RADIUS;
 
-            // Find all colliders in range
             Collider[] hitColliders = Physics.OverlapSphere(execution.combatant.transform.position, windmillRange);
 
-            int hitCount = 0;
             foreach (var hitCollider in hitColliders)
             {
                 // Skip self
-                if (hitCollider.transform == execution.combatant.transform) continue;
+                if (hitCollider.transform == execution.combatant.transform)
+                    continue;
 
-                // Check if this is a valid target (has CombatController)
+                // Check if valid target
                 var targetCombatController = hitCollider.GetComponent<CombatController>();
-                if (targetCombatController == null) continue;
+                if (targetCombatController == null)
+                    continue;
 
-                // Skip if on same faction (don't hit allies)
-                if (targetCombatController == execution.combatant) continue;
-
-                // Get target components
-                var targetHealth = hitCollider.GetComponent<HealthSystem>();
-                var targetKnockdownMeter = hitCollider.GetComponent<KnockdownMeterTracker>();
-                var targetStatusEffects = hitCollider.GetComponent<StatusEffectManager>();
-                var targetStats = targetCombatController.Stats;
-
-                if (targetHealth == null || targetKnockdownMeter == null || targetStatusEffects == null || targetStats == null)
-                {
-                    continue; // Skip invalid targets
-                }
+                // Skip allies (same combatant reference)
+                if (targetCombatController == execution.combatant)
+                    continue;
 
                 // Skip dead targets
-                if (!targetHealth.IsAlive) continue;
+                var targetHealth = targetCombatController.GetComponent<HealthSystem>();
+                if (targetHealth == null || !targetHealth.IsAlive)
+                    continue;
 
-                // Calculate damage
-                int damage = DamageCalculator.CalculateBaseDamage(attackerStats, attackerWeapon, targetStats, SkillType.Windmill);
-                targetHealth.TakeDamage(damage, execution.combatant.transform);
+                // Skip non-hostile targets (faction check)
+                if (!execution.combatant.IsHostileTo(targetCombatController))
+                    continue;
 
-                // Register hit dealt for attacker's pattern tracking
-                WeaponController executionWeaponController = execution.combatant.GetComponent<WeaponController>();
-                executionWeaponController?.RegisterHitDealt(hitCollider.transform);
-
-                // Apply knockdown with displacement
-                Vector3 knockbackDirection = (hitCollider.transform.position - execution.combatant.transform.position).normalized;
-                Vector3 displacement = knockbackDirection * CombatConstants.WINDMILL_KNOCKBACK_DISTANCE;
-                targetKnockdownMeter.TriggerImmediateKnockdown(displacement);
-
-                hitCount++;
-
-                if (enableDebugLogs)
-                {
-                    Debug.Log($"{execution.combatant.name} Windmill hit {hitCollider.name} for {damage} damage (AoE {hitCount})");
-                }
+                targets.Add(targetCombatController);
             }
+
+            return targets;
+        }
+
+        /// <summary>
+        /// Executes Windmill attack on a single target.
+        /// Reuses existing helper methods from Tier 1 refactoring for consistency.
+        /// </summary>
+        private void ExecuteWindmillOnTarget(SkillExecution execution, CombatController target,
+            CharacterStats attackerStats, WeaponData attackerWeapon)
+        {
+            var targetComponents = GetTargetComponents(target);
+            if (targetComponents == null)
+                return;
+
+            // Apply damage using shared helper
+            int damage = ApplySkillDamage(execution, target, targetComponents, attackerStats, attackerWeapon, out bool wasCritical);
+
+            // Apply effects using shared helper
+            ApplySkillEffects(execution, target, targetComponents, attackerStats, attackerWeapon, damage, wasCritical);
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{execution.combatant.name} Windmill AoE complete - hit {hitCount} targets");
+                CombatLogger.LogCombat($"{execution.combatant.name} Windmill hit {target.name} for {damage} damage");
+            }
+        }
+
+        /// <summary>
+        /// Notifies execution tracker that Windmill AoE was executed.
+        /// </summary>
+        private void NotifyTrackerWindmillExecuted(SkillExecution execution, int hitCount)
+        {
+            if (enableDebugLogs)
+            {
+                CombatLogger.LogCombat($"{execution.combatant.name} Windmill AoE complete - hit {hitCount} targets");
             }
         }
 
@@ -895,166 +727,8 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{execution.combatant.name} {execution.skillType} cancelled: {reason}");
+                CombatLogger.LogCombat($"{execution.combatant.name} {execution.skillType} cancelled: {reason}");
             }
-        }
-
-        private List<SpeedResolutionGroupResult> ResolveSpeedConflicts(List<SkillExecution> offensiveSkills)
-        {
-            var results = GetResultsList(); // Phase 3.3: Use pooled list
-
-            // Group skills by simultaneous execution timing
-            var groups = GroupSimultaneousSkills(offensiveSkills);
-
-            foreach (var group in groups)
-            {
-                if (group.Count == 1)
-                {
-                    results.Add(new SpeedResolutionGroupResult
-                    {
-                        resolution = SpeedResolution.Player1Wins,
-                        winner = group[0],
-                        loser = null
-                    });
-                }
-                else
-                {
-                    // Resolve speed between group members
-                    var speedResult = ResolveSpeedBetweenSkills(group);
-                    results.Add(speedResult);
-                }
-            }
-
-            // Return groups list to pool (Phase 3.3)
-            ReturnNestedList(groups);
-
-            return results;
-        }
-
-        private List<List<SkillExecution>> GroupSimultaneousSkills(List<SkillExecution> skills)
-        {
-            var groups = GetNestedList(); // Phase 3.3: Use pooled list
-
-            foreach (var skill in skills.OrderBy(s => s.timestamp))
-            {
-                bool addedToGroup = false;
-
-                foreach (var group in groups)
-                {
-                    if (Mathf.Abs(skill.timestamp - group[0].timestamp) <= CombatConstants.SIMULTANEOUS_EXECUTION_WINDOW)
-                    {
-                        group.Add(skill);
-                        addedToGroup = true;
-                        break;
-                    }
-                }
-
-                if (!addedToGroup)
-                {
-                    var newGroup = GetSkillExecutionList(); // Phase 3.3: Use pooled list
-                    newGroup.Add(skill);
-                    groups.Add(newGroup);
-                }
-            }
-
-            return groups;
-        }
-
-        private SpeedResolutionGroupResult ResolveSpeedBetweenSkills(List<SkillExecution> skills)
-        {
-            if (skills.Count < 2)
-            {
-                return new SpeedResolutionGroupResult
-                {
-                    resolution = SpeedResolution.Player1Wins,
-                    winner = skills[0],
-                    loser = null
-                };
-            }
-
-            // Calculate speeds for all skills
-            var skillSpeeds = skills.Select(skill =>
-            {
-                var combatant = skill.combatant;
-                var stats = combatant.Stats;
-                var weaponController = combatant.GetComponent<WeaponController>();
-                var weapon = weaponController?.WeaponData;
-
-                return new
-                {
-                    skill = skill,
-                    speed = stats != null && weapon != null
-                        ? SpeedResolver.CalculateSpeed(skill.skillType, stats, weapon)
-                        : 0f
-                };
-            }).ToList();
-
-            // Find highest speed
-            float maxSpeed = skillSpeeds.Max(s => s.speed);
-            var winners = skillSpeeds.Where(s => Mathf.Approximately(s.speed, maxSpeed)).ToList();
-
-            if (winners.Count == 1)
-            {
-                // Single winner
-                var winner = winners[0];
-                var loser = skillSpeeds.FirstOrDefault(s => s != winner);
-
-                return new SpeedResolutionGroupResult
-                {
-                    resolution = SpeedResolution.Player1Wins,
-                    winner = winner.skill,
-                    loser = loser?.skill
-                };
-            }
-            else
-            {
-                // Tie - simultaneous execution
-                return new SpeedResolutionGroupResult
-                {
-                    resolution = SpeedResolution.Tie,
-                    tiedExecutions = winners.Select(w => w.skill).ToList()
-                };
-            }
-        }
-
-        private class SkillExecution
-        {
-            public SkillSystem skillSystem;
-            public SkillType skillType;
-            public CombatController combatant;
-            public float timestamp;
-
-            public void Reset()
-            {
-                skillSystem = null;
-                skillType = SkillType.Attack;
-                combatant = null;
-                timestamp = 0f;
-            }
-        }
-
-        private class SkillExecutionPool
-        {
-            private Stack<SkillExecution> pool = new Stack<SkillExecution>(CombatConstants.SKILL_EXECUTION_POOL_INITIAL_CAPACITY);
-
-            public SkillExecution Get()
-            {
-                return pool.Count > 0 ? pool.Pop() : new SkillExecution();
-            }
-
-            public void Return(SkillExecution execution)
-            {
-                execution.Reset();
-                pool.Push(execution);
-            }
-        }
-
-        private class SpeedResolutionGroupResult
-        {
-            public SpeedResolution resolution;
-            public SkillExecution winner;
-            public SkillExecution loser;
-            public List<SkillExecution> tiedExecutions;
         }
     }
 }

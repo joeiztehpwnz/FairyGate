@@ -40,7 +40,7 @@ namespace FairyGate.Combat
 
             if (characterStats == null)
             {
-                Debug.LogWarning($"StatusEffectManager on {gameObject.name} has no CharacterStats assigned. Using default values.");
+                CombatLogger.LogSystem($"StatusEffectManager on {gameObject.name} has no CharacterStats assigned. Using default values.", CombatLogger.LogLevel.Warning);
                 characterStats = CharacterStats.CreateDefaultStats();
             }
 
@@ -83,7 +83,7 @@ namespace FairyGate.Combat
 
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} status effect {effect.type} duration reset to {effect.duration:F1}s");
+                    CombatLogger.LogSystem($"{gameObject.name} status effect {effect.type} duration reset to {effect.duration:F1}s");
                 }
             }
             else
@@ -93,7 +93,7 @@ namespace FairyGate.Combat
 
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} received status effect: {effect.type} for {effect.duration:F1}s");
+                    CombatLogger.LogSystem($"{gameObject.name} received status effect: {effect.type} for {effect.duration:F1}s");
                 }
             }
 
@@ -121,7 +121,7 @@ namespace FairyGate.Combat
 
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} status effect removed: {type}");
+                    CombatLogger.LogSystem($"{gameObject.name} status effect removed: {type}");
                 }
             }
         }
@@ -141,7 +141,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} all status effects cleared");
+                CombatLogger.LogSystem($"{gameObject.name} all status effects cleared");
             }
         }
 
@@ -163,7 +163,7 @@ namespace FairyGate.Combat
 
                         if (enableDebugLogs)
                         {
-                            Debug.Log($"{gameObject.name} status effect expired: {effect.type}");
+                            CombatLogger.LogSystem($"{gameObject.name} status effect expired: {effect.type}");
                         }
 
                         UpdateMovementRestrictions();
@@ -193,7 +193,7 @@ namespace FairyGate.Combat
                         // Cannot be stunned while knocked back or down
                         if (enableDebugLogs)
                         {
-                            Debug.Log($"{gameObject.name} cannot be stunned while knocked back/down");
+                            CombatLogger.LogSystem($"{gameObject.name} cannot be stunned while knocked back/down");
                         }
                         return;
                     }
@@ -205,7 +205,7 @@ namespace FairyGate.Combat
                         // Cannot be knocked back while knocked down (knockdown is higher priority)
                         if (enableDebugLogs)
                         {
-                            Debug.Log($"{gameObject.name} cannot be knocked back while knocked down");
+                            CombatLogger.LogSystem($"{gameObject.name} cannot be knocked back while knocked down");
                         }
                         return;
                     }
@@ -216,7 +216,7 @@ namespace FairyGate.Combat
 
                         if (enableDebugLogs)
                         {
-                            Debug.Log($"{gameObject.name} knockback overrides stun effect");
+                            CombatLogger.LogSystem($"{gameObject.name} knockback overrides stun effect");
                         }
                     }
                     break;
@@ -230,7 +230,7 @@ namespace FairyGate.Combat
 
                         if (enableDebugLogs)
                         {
-                            Debug.Log($"{gameObject.name} knockdown overrides stun effect");
+                            CombatLogger.LogSystem($"{gameObject.name} knockdown overrides stun effect");
                         }
                     }
                     if (IsKnockedBack)
@@ -240,7 +240,7 @@ namespace FairyGate.Combat
 
                         if (enableDebugLogs)
                         {
-                            Debug.Log($"{gameObject.name} knockdown overrides knockback effect");
+                            CombatLogger.LogSystem($"{gameObject.name} knockdown overrides knockback effect");
                         }
                     }
                     break;
@@ -270,6 +270,13 @@ namespace FairyGate.Combat
             if (movementController != null)
             {
                 movementController.SetCanMove(CanMove);
+
+                // Reset movement speed modifier to prevent persistent slowdown after status effects
+                // This fixes the bug where interrupted skills leave skillMovementModifier at 0f
+                if (CanMove)
+                {
+                    movementController.SetMovementModifier(1f);
+                }
             }
 
             if (skillSystem != null)
@@ -296,7 +303,7 @@ namespace FairyGate.Combat
 
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} status effect {type} extended by {additionalTime:F1}s (remaining: {effect.remainingTime:F1}s)");
+                    CombatLogger.LogSystem($"{gameObject.name} status effect {type} extended by {additionalTime:F1}s (remaining: {effect.remainingTime:F1}s)");
                 }
             }
         }
@@ -308,6 +315,16 @@ namespace FairyGate.Combat
         {
             float modifiedDuration = DamageCalculator.CalculateStunDuration(duration, characterStats);
             ApplyStatusEffect(new StatusEffect(StatusEffectType.Stun, modifiedDuration));
+        }
+
+        /// <summary>
+        /// Applies a pre-calculated stun duration without re-applying Focus resistance.
+        /// Used when stun duration has already been calculated with DamageCalculator.CalculateStunDuration().
+        /// N+1 System: Critical for maintaining timing window accuracy.
+        /// </summary>
+        public void ApplyCalculatedStun(float calculatedDuration)
+        {
+            ApplyStatusEffect(new StatusEffect(StatusEffectType.Stun, calculatedDuration));
         }
 
         public void ApplyKnockback(Vector3 displacement)
@@ -355,7 +372,7 @@ namespace FairyGate.Combat
 
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} displaced by {displacementVector}");
+                    CombatLogger.LogSystem($"{gameObject.name} displaced by {displacementVector}");
                 }
             }
             else
@@ -365,7 +382,7 @@ namespace FairyGate.Combat
 
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} displaced by {displacementVector} (transform fallback)");
+                    CombatLogger.LogSystem($"{gameObject.name} displaced by {displacementVector} (transform fallback)");
                 }
             }
         }

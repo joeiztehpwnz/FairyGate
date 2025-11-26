@@ -21,6 +21,9 @@ MonoBehaviour:
   baseDamage: 10
   speed: 1
   stunDuration: 0.3
+  comboLength: 1
+  knockdownRate: 0.7
+  isFastWeapon: 0
   range: 6
   executionSpeedModifier: 0
   speedResolutionModifier: 0

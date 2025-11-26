@@ -3,7 +3,7 @@ using UnityEngine.SceneManagement;
 
 namespace FairyGate.Combat
 {
-    public class GameManager : MonoBehaviour
+    public class GameManager : Singleton<GameManager>
     {
         [Header("Game Configuration")]
         [SerializeField] private KeyCode resetKey = KeyCode.R;
@@ -12,25 +12,9 @@ namespace FairyGate.Combat
         [Header("Scene Management")]
         [SerializeField] private string combatSceneName = "CombatTest"; // Reserved for future scene switching functionality
 
-        private static GameManager instance;
-        public static GameManager Instance => instance;
-
         private bool gameEnded = false;
 
-        private void Awake()
-        {
-            // Singleton pattern
-            if (instance == null)
-            {
-                instance = this;
-                DontDestroyOnLoad(gameObject);
-            }
-            else
-            {
-                Destroy(gameObject);
-                return;
-            }
-        }
+        protected override bool PersistAcrossScenes => true;
 
         private void Update()
         {
@@ -53,7 +37,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"Game ended! {deadCharacter.name} has died. Press {resetKey} to reset.");
+                CombatLogger.LogSystem($"Game ended! {deadCharacter.name} has died. Press {resetKey} to reset.");
             }
 
             // Display death message
@@ -63,14 +47,14 @@ namespace FairyGate.Combat
         private void ShowDeathMessage(string characterName)
         {
             // This could be enhanced with a proper UI system
-            Debug.Log($"=== GAME OVER ===\n{characterName} has been defeated!\nPress '{resetKey}' to reset and continue testing.");
+            CombatLogger.LogSystem($"=== GAME OVER ===\n{characterName} has been defeated!\nPress '{resetKey}' to reset and continue testing.");
         }
 
         public void ResetScene()
         {
             if (enableDebugLogs)
             {
-                Debug.Log("Resetting scene for continued testing...");
+                CombatLogger.LogSystem("Resetting scene for continued testing...");
             }
 
             gameEnded = false;

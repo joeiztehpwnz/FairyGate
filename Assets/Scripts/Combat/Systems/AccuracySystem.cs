@@ -42,7 +42,7 @@ namespace FairyGate.Combat
             characterStats = combatController?.Stats;
             if (characterStats == null)
             {
-                Debug.LogWarning($"AccuracySystem on {gameObject.name} could not find CharacterStats");
+                CombatLogger.LogCombat($"AccuracySystem on {gameObject.name} could not find CharacterStats", CombatLogger.LogLevel.Warning);
                 characterStats = CharacterStats.CreateDefaultStats();
             }
 
@@ -70,7 +70,7 @@ namespace FairyGate.Combat
             if (target == null)
             {
                 if (enableDebugLogs)
-                    Debug.LogWarning($"{gameObject.name} cannot start aiming: no target");
+                    CombatLogger.LogCombat($"{gameObject.name} cannot start aiming: no target", CombatLogger.LogLevel.Warning);
                 return;
             }
 
@@ -83,7 +83,7 @@ namespace FairyGate.Combat
             lastCachedTarget = target;
 
             if (enableDebugLogs)
-                Debug.Log($"{gameObject.name} started aiming at {target.name}");
+                CombatLogger.LogCombat($"{gameObject.name} started aiming at {target.name}");
         }
 
         public void StopAiming()
@@ -97,7 +97,7 @@ namespace FairyGate.Combat
             lastCachedTarget = null;
 
             if (enableDebugLogs)
-                Debug.Log($"{gameObject.name} stopped aiming");
+                CombatLogger.LogCombat($"{gameObject.name} stopped aiming");
         }
 
         private void UpdateAccuracy(float deltaTime)
@@ -158,7 +158,7 @@ namespace FairyGate.Combat
             bool isHit = hitRoll <= currentAccuracy;
 
             if (enableDebugLogs)
-                Debug.Log($"{gameObject.name} rolled {hitRoll:F1} vs {currentAccuracy:F1}% accuracy → {(isHit ? "HIT" : "MISS")}");
+                CombatLogger.LogCombat($"{gameObject.name} rolled {hitRoll:F1} vs {currentAccuracy:F1}% accuracy → {(isHit ? "HIT" : "MISS")}");
 
             return isHit;
         }

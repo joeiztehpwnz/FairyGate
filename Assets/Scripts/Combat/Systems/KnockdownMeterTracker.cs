@@ -14,6 +14,11 @@ namespace FairyGate.Combat
         [SerializeField] private CharacterStats characterStats;
         [SerializeField] private bool enableDebugLogs = true;
 
+        [Header("N+1 System Compatibility")]
+        [Tooltip("Disable 50% knockback threshold to enable Classic Mabinogi N+1 combo system. " +
+                 "When disabled, enemies stay stunned in place during combos (required for N+1).")]
+        [SerializeField] private bool enableKnockbackThreshold = false; // DISABLED by default for N+1
+
         private Transform lastAttacker;
         private bool hasTriggeredKnockback = false;
 
@@ -24,6 +29,7 @@ namespace FairyGate.Combat
 
         // C# Events (replaces UnityEvents for performance)
         public event Action<float, float> OnMeterChanged; // current, max
+        public event Action OnKnockbackTriggered;
         public event Action OnMeterKnockdownTriggered;
 
         private StatusEffectManager statusEffectManager;
@@ -39,7 +45,7 @@ namespace FairyGate.Combat
 
             if (characterStats == null)
             {
-                Debug.LogWarning($"KnockdownMeterTracker on {gameObject.name} has no CharacterStats assigned. Using default values.");
+                CombatLogger.LogCombat($"KnockdownMeterTracker on {gameObject.name} has no CharacterStats assigned. Using default values.", CombatLogger.LogLevel.Warning);
                 characterStats = CharacterStats.CreateDefaultStats();
             }
 
@@ -56,8 +62,12 @@ namespace FairyGate.Combat
         // Renamed from Update() to CombatUpdate() for centralized update management
         public void CombatUpdate(float deltaTime)
         {
-            // Continuous decay - never resets, only decays
-            if (currentMeter > 0f)
+            // N+1 System: Pause decay while stunned to preserve combo pressure
+            // This allows knockdown buildup to persist during N+1 combo windows
+            bool isStunned = statusEffectManager != null && statusEffectManager.IsStunned;
+
+            // Continuous decay - never resets, only decays (paused during stun)
+            if (currentMeter > 0f && !isStunned)
             {
                 float oldMeter = currentMeter;
                 currentMeter = Mathf.Max(0f, currentMeter + (decayRate * deltaTime));
@@ -67,13 +77,13 @@ namespace FairyGate.Combat
                     OnMeterChanged?.Invoke(currentMeter, maxMeter);
                 }
 
-                // Reset knockback flag if meter decays below threshold
-                if (hasTriggeredKnockback && currentMeter < CombatConstants.KNOCKBACK_METER_THRESHOLD)
+                // Reset knockback flag if meter decays below threshold (only if threshold system is enabled)
+                if (enableKnockbackThreshold && hasTriggeredKnockback && currentMeter < CombatConstants.KNOCKBACK_METER_THRESHOLD)
                 {
                     hasTriggeredKnockback = false;
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{gameObject.name} knockback flag reset (meter below threshold)");
+                        CombatLogger.LogCombat($"{gameObject.name} knockback flag reset (meter below threshold)");
                     }
                 }
             }
@@ -83,13 +93,13 @@ namespace FairyGate.Combat
             {
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"[Classic Mabinogi] {gameObject.name} combo reset (timeout)");
+                    CombatLogger.LogCombat($"[Classic Mabinogi] {gameObject.name} combo reset (timeout)");
                 }
                 currentComboHitNumber = 0;
             }
         }
 
-        public void AddMeterBuildup(int attackDamage, CharacterStats attackerStats, Transform attacker = null)
+        public void AddMeterBuildup(int attackDamage, CharacterStats attackerStats, WeaponData weaponData, Transform attacker = null)
         {
             // Store the last attacker for displacement calculation
             if (attacker != null)
@@ -109,13 +119,21 @@ namespace FairyGate.Combat
 
             // Classic Mabinogi: Use flat diminishing returns values
             // Each successive hit applies less knockdown pressure to prevent spam
-            float buildup = GetKnockdownBuildupValue(currentComboHitNumber);
+            float baseBuildup = GetKnockdownBuildupValue(currentComboHitNumber);
+
+            // N+1 System: Apply weapon-specific knockdown rate modifier
+            // Fast weapons (Dagger): 0.8x rate, more hits compensate
+            // Slow weapons (Mace): 1.3x rate, fewer hits but more impact
+            float weaponModifier = weaponData != null ? weaponData.knockdownRate : 1.0f;
+            float buildup = baseBuildup * weaponModifier;
 
             AddToMeter(buildup);
 
             if (enableDebugLogs)
             {
-                Debug.Log($"[Classic Mabinogi] {gameObject.name} knockdown meter: +{buildup:F1} (hit #{currentComboHitNumber}) (total: {currentMeter:F1}/{maxMeter})");
+                CombatLogger.LogCombat($"[Classic Mabinogi] {gameObject.name} knockdown meter: " +
+                    $"+{buildup:F1} (hit #{currentComboHitNumber}, base: {baseBuildup:F1}, weapon rate: {weaponModifier:F2}) " +
+                    $"(total: {currentMeter:F1}/{maxMeter})");
             }
         }
 
@@ -128,8 +146,10 @@ namespace FairyGate.Combat
 
             OnMeterChanged?.Invoke(currentMeter, maxMeter);
 
-            // Check for knockback threshold (50%) - triggers once per cycle
-            if (!hasTriggeredKnockback && currentMeter >= CombatConstants.KNOCKBACK_METER_THRESHOLD && oldMeter < CombatConstants.KNOCKBACK_METER_THRESHOLD)
+            // Check for knockback threshold (50%) - OPTIONAL for N+1 compatibility
+            // Classic Mabinogi: Enemies stay stunned in place during combos (no knockback displacement)
+            // This allows N+1 combo extensions to work properly
+            if (enableKnockbackThreshold && !hasTriggeredKnockback && currentMeter >= CombatConstants.KNOCKBACK_METER_THRESHOLD && oldMeter < CombatConstants.KNOCKBACK_METER_THRESHOLD)
             {
                 TriggerKnockback();
                 hasTriggeredKnockback = true;
@@ -142,11 +162,18 @@ namespace FairyGate.Combat
             }
         }
 
+        /// <summary>
+        /// DEPRECATED for N+1 System: Triggers knockback at 50% meter threshold.
+        /// This mechanic conflicts with Classic Mabinogi N+1 combo system because it displaces
+        /// enemies mid-combo, breaking positioning and making N+1 execution impossible.
+        ///
+        /// Set enableKnockbackThreshold = false to disable this for N+1 compatibility.
+        /// </summary>
         public void TriggerKnockback()
         {
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} knockback meter reached 50% threshold! Triggering knockback.");
+                CombatLogger.LogCombat($"{gameObject.name} knockback meter reached 50% threshold! Triggering knockback.");
             }
 
             // Apply knockback with displacement
@@ -169,6 +196,9 @@ namespace FairyGate.Combat
                 statusEffectManager.ApplyKnockback(displacement);
             }
 
+            // Fire knockback event
+            OnKnockbackTriggered?.Invoke();
+
             // Meter continues to accumulate after knockback
         }
 
@@ -176,7 +206,7 @@ namespace FairyGate.Combat
         {
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} knockdown meter reached 100% threshold! Triggering meter knockdown.");
+                CombatLogger.LogCombat($"{gameObject.name} knockdown meter reached 100% threshold! Triggering meter knockdown.");
             }
 
             // Apply meter-based knockdown with displacement
@@ -201,8 +231,15 @@ namespace FairyGate.Combat
 
             OnMeterKnockdownTriggered?.Invoke();
 
-            // IMPORTANT: Meter continues normal decay, does NOT reset to 0
-            // This is explicitly stated in the specifications
+            // Reset meter after full knockdown
+            currentMeter = 0f;
+            hasTriggeredKnockback = false; // Reset 50% threshold flag
+            OnMeterChanged?.Invoke(currentMeter, maxMeter);
+
+            if (enableDebugLogs)
+            {
+                CombatLogger.LogCombat($"{gameObject.name} knockdown meter reset to 0");
+            }
         }
 
         public void SetMeter(float value)
@@ -231,7 +268,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} knockdown meter reset for testing purposes");
+                CombatLogger.LogCombat($"{gameObject.name} knockdown meter reset for testing purposes");
             }
         }
 
@@ -240,7 +277,7 @@ namespace FairyGate.Combat
         {
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} received immediate knockdown (Smash/Windmill bypass)");
+                CombatLogger.LogCombat($"{gameObject.name} received immediate knockdown (Smash/Windmill bypass)");
             }
 
             if (statusEffectManager != null)
@@ -255,7 +292,15 @@ namespace FairyGate.Combat
                 }
             }
 
-            // NOTE: Smash/Windmill do NOT affect the knockdown meter system at all
+            // Reset meter when knocked down by Smash/Windmill
+            currentMeter = 0f;
+            hasTriggeredKnockback = false; // Reset 50% threshold flag
+            OnMeterChanged?.Invoke(currentMeter, maxMeter);
+
+            if (enableDebugLogs)
+            {
+                CombatLogger.LogCombat($"{gameObject.name} knockdown meter reset to 0 (skill-based knockdown)");
+            }
         }
 
         /// <summary>
@@ -272,6 +317,23 @@ namespace FairyGate.Combat
                 3 => 20f,  // Third hit: 20 knockdown buildup
                 _ => 15f   // Subsequent hits: 15 knockdown buildup
             };
+        }
+
+        /// <summary>
+        /// Resets the combo counter. Called when an N+1 skill extension successfully executes.
+        /// This ends the combo chain cleanly as per Classic Mabinogi N+1 system design.
+        /// </summary>
+        public void ResetComboCounter()
+        {
+            if (currentComboHitNumber > 0)
+            {
+                if (enableDebugLogs)
+                {
+                    CombatLogger.LogCombat($"[N+1] {gameObject.name} combo counter reset (was at hit #{currentComboHitNumber})");
+                }
+                currentComboHitNumber = 0;
+                lastHitTime = -999f; // Set to far past to ensure fresh combo next time
+            }
         }
 
         private void OnValidate()

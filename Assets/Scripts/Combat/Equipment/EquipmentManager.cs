@@ -44,7 +44,7 @@ namespace FairyGate.Combat
             }
             else
             {
-                Debug.LogError($"[EquipmentManager] {gameObject.name} - BaseStats is null! Cannot initialize equipment system.");
+                CombatLogger.LogCombat($"[EquipmentManager] {gameObject.name} - BaseStats is null! Cannot initialize equipment system.", CombatLogger.LogLevel.Error);
             }
         }
 
@@ -63,7 +63,7 @@ namespace FairyGate.Combat
             {
                 if (enableDebugLogs)
                 {
-                    Debug.LogWarning($"{gameObject.name} cannot change equipment during combat");
+                    CombatLogger.LogCombat($"{gameObject.name} cannot change equipment during combat", CombatLogger.LogLevel.Warning);
                 }
                 return false;
             }
@@ -81,7 +81,7 @@ namespace FairyGate.Combat
                     // Handled by WeaponController
                     if (enableDebugLogs)
                     {
-                        Debug.LogWarning("Use WeaponController to change weapons");
+                        CombatLogger.LogCombat("Use WeaponController to change weapons", CombatLogger.LogLevel.Warning);
                     }
                     return false;
             }
@@ -91,7 +91,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} equipped {equipment.equipmentName} in {equipment.slot} slot");
+                CombatLogger.LogCombat($"{gameObject.name} equipped {equipment.equipmentName} in {equipment.slot} slot");
             }
 
             return true;
@@ -103,7 +103,7 @@ namespace FairyGate.Combat
             {
                 if (enableDebugLogs)
                 {
-                    Debug.LogWarning($"{gameObject.name} cannot change equipment during combat");
+                    CombatLogger.LogCombat($"{gameObject.name} cannot change equipment during combat", CombatLogger.LogLevel.Warning);
                 }
                 return false;
             }
@@ -122,7 +122,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} unequipped {slot}");
+                CombatLogger.LogCombat($"{gameObject.name} unequipped {slot}");
             }
 
             return true;
@@ -149,7 +149,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} equipment bonuses refreshed - Str:{modifiedStats.strength} Dex:{modifiedStats.dexterity} Def:{modifiedStats.physicalDefense} Focus:{modifiedStats.focus}");
+                CombatLogger.LogCombat($"{gameObject.name} equipment bonuses refreshed - Str:{modifiedStats.strength} Dex:{modifiedStats.dexterity} Def:{modifiedStats.physicalDefense} Focus:{modifiedStats.focus}");
             }
         }
 
@@ -168,7 +168,7 @@ namespace FairyGate.Combat
         {
             if (source == null || destination == null)
             {
-                Debug.LogError($"[EquipmentManager] {gameObject.name} - Cannot copy stats: source or destination is null!");
+                CombatLogger.LogCombat($"[EquipmentManager] {gameObject.name} - Cannot copy stats: source or destination is null!", CombatLogger.LogLevel.Error);
                 return;
             }
 
@@ -192,7 +192,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} equipped set: {set.setName}");
+                CombatLogger.LogCombat($"{gameObject.name} equipped set: {set.setName}");
             }
         }
     }

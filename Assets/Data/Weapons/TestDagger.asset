@@ -20,14 +20,17 @@ MonoBehaviour:
   rangedDamageMultiplier: 0.8
   baseDamage: 6
   speed: 1.5
-  stunDuration: 0.5
+  stunDuration: 0.4
+  comboLength: 5
+  knockdownRate: 0.8
+  isFastWeapon: 1
   range: 1.5
   executionSpeedModifier: -0.2
   speedResolutionModifier: 0.2
   weaponPrefab: {fileID: 0}
   weaponIcon: {fileID: 0}
   hitSounds: []
-  description: Speed advantage with damage trade-offs - good thrown weapon (classic:
+  description: Speed advantage with damage trade-offs - good thrown weapon (classic
     no range disadvantage)
   meleeTrailColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
   meleeTrailWidth: 0.2

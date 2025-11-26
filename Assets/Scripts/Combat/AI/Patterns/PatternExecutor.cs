@@ -14,7 +14,7 @@ namespace FairyGate.Combat
     [RequireComponent(typeof(HealthSystem))]
     [RequireComponent(typeof(StaminaSystem))]
     [RequireComponent(typeof(MovementController))]
-    public class PatternExecutor : MonoBehaviour
+    public class PatternExecutor : MonoBehaviour, IAIAgent
     {
         [Header("Pattern Configuration")]
         [SerializeField] private PatternDefinition patternDefinition;
@@ -23,17 +23,24 @@ namespace FairyGate.Combat
         [SerializeField] private Transform targetPlayer;
         [SerializeField] private float playerSearchCooldown = 1.0f;
 
-        [Header("Skill Timing")]
-        [SerializeField] private float skillCooldown = 3.0f;
-        [SerializeField] private float randomVariance = 2.0f;
-
         [Header("Combat Configuration")]
         [SerializeField] private float engageDistance = 3.0f;
         [SerializeField] private bool useCoordination = true;
 
+        [Header("Weapon Swapping")]
+        [SerializeField] private bool enableWeaponSwapping = false;
+        [SerializeField] private PreferredRange preferPrimaryAtRange = PreferredRange.Either;
+        [SerializeField] private PreferredRange preferSecondaryAtRange = PreferredRange.Either;
+        [SerializeField] private float swapDistanceThreshold = 3.0f;
+        [SerializeField] private float swapCooldown = 5.0f;
+
         [Header("Debug")]
         [SerializeField] private bool enableDebugLogs = true;
         [SerializeField] private bool showDebugGUI = false;
+
+        [Header("N+1 Combo System")]
+        [SerializeField] private float nPlusOneChance = 0.4f; // 40% chance to attempt N+1 (adjust per archetype)
+        [SerializeField] private SkillType[] preferredComboFinishers = new SkillType[] { SkillType.Smash, SkillType.Windmill };
 
         // Pattern state
         private PatternNode currentNode;
@@ -41,18 +48,6 @@ namespace FairyGate.Combat
         private int hitsTaken = 0;
         private int hitsDealt = 0;
         private CombatState lastCombatState = CombatState.Idle;
-
-        // Skill timing
-        private float nextSkillTime;
-
-        // Attack coordination
-        private bool hasAttackSlot = false;
-
-        // Skill execution tracking
-        private Coroutine currentSkillCoroutine;
-
-        // Weapon capability
-        private bool hasRangedWeapon = false;
 
         // Context for pattern evaluation
         private PatternEvaluationContext context;
@@ -64,16 +59,35 @@ namespace FairyGate.Combat
         private CombatController combatController;
         private WeaponController weaponController;
         private MovementController movementController;
+        private ICombatStateValidator stateValidator;
         private float lastPlayerSearchTime = -999f;
 
-        // Movement state
-        private AICoordinator coordinator;
+        // Delegated component handlers
+        private PatternMovementController movementHandler;
+        private PatternWeaponManager weaponManager;
+        private PatternCombatHandler combatHandler;
 
         // Public accessors for debugging
         public PatternNode CurrentNode => currentNode;
         public float TimeInCurrentNode => timeInCurrentNode;
         public int HitsTaken => hitsTaken;
         public int HitsDealt => hitsDealt;
+
+        // IAIAgent interface implementation
+        // Note: Removed IsNodeReady() check - coordinator only manages timing/capacity, not node readiness
+        public bool IsReadyToAttack
+        {
+            get
+            {
+                bool ready = !combatHandler.HasAttackSlot && combatController.IsInCombat;
+                if (enableDebugLogs && !ready)
+                {
+                    CombatLogger.LogPattern($"{gameObject.name} IsReadyToAttack=false (hasSlot={combatHandler.HasAttackSlot}, inCombat={combatController.IsInCombat})", CombatLogger.LogLevel.Debug);
+                }
+                return ready;
+            }
+        }
+        public bool IsInCombat => combatController.IsInCombat;
 
         private void Awake()
         {
@@ -85,8 +99,12 @@ namespace FairyGate.Combat
             weaponController = GetComponent<WeaponController>();
             movementController = GetComponent<MovementController>();
 
-            // Get coordinator if available
-            coordinator = AICoordinator.Instance;
+            // Get or add state validator
+            stateValidator = GetComponent<ICombatStateValidator>();
+            if (stateValidator == null)
+            {
+                stateValidator = gameObject.AddComponent<CombatStateValidator>();
+            }
 
             // Initialize evaluation context
             context = new PatternEvaluationContext
@@ -94,10 +112,43 @@ namespace FairyGate.Combat
                 skillSystem = skillSystem,
                 weaponController = weaponController
             };
+
+            // Initialize delegated handlers
+            movementHandler = new PatternMovementController(
+                movementController,
+                weaponController,
+                transform,
+                enableDebugLogs);
+
+            weaponManager = new PatternWeaponManager(
+                weaponController,
+                transform,
+                enableWeaponSwapping,
+                preferPrimaryAtRange,
+                preferSecondaryAtRange,
+                swapDistanceThreshold,
+                swapCooldown,
+                enableDebugLogs);
+
+            combatHandler = new PatternCombatHandler(
+                this,
+                skillSystem,
+                combatController,
+                weaponController,
+                transform,
+                engageDistance,
+                useCoordination,
+                enableDebugLogs);
         }
 
         private void Start()
         {
+            // Subscribe to death event
+            if (healthSystem != null)
+            {
+                healthSystem.OnDied += OnDied;
+            }
+
             // Initialize pattern
             if (patternDefinition != null)
             {
@@ -108,22 +159,22 @@ namespace FairyGate.Combat
 
                 if (currentNode != null && enableDebugLogs)
                 {
-                    Debug.Log($"[PatternExecutor] {gameObject.name} initialized with pattern '{patternDefinition.patternName}' starting at node '{currentNode.nodeName}'");
+                    CombatLogger.LogPattern($"{gameObject.name} initialized with pattern '{patternDefinition.patternName}' starting at node '{currentNode.nodeName}'");
                 }
             }
             else
             {
-                Debug.LogWarning($"[PatternExecutor] {gameObject.name} has no pattern assigned! AI will not function.");
+                CombatLogger.LogPattern($"{gameObject.name} has no pattern assigned! AI will not function.", CombatLogger.LogLevel.Warning);
             }
 
             // Find player
             FindPlayer();
 
-            // Initialize skill cooldown timer
-            nextSkillTime = Time.time + skillCooldown + Random.Range(-randomVariance, randomVariance);
+            // Initialize combat handler
+            combatHandler.Initialize();
 
             // Check weapon capabilities
-            UpdateWeaponCapabilities();
+            weaponManager.UpdateWeaponCapabilities();
 
             // Subscribe to combat events for hit tracking
             if (healthSystem != null)
@@ -136,6 +187,9 @@ namespace FairyGate.Combat
             {
                 weaponController.OnHitDealt += OnHitDealt;
             }
+
+            // Register with coordinator
+            combatHandler.RegisterWithCoordinator(this);
         }
 
         private void OnDestroy()
@@ -144,6 +198,7 @@ namespace FairyGate.Combat
             if (healthSystem != null)
             {
                 healthSystem.OnDamageReceived -= OnDamageReceived;
+                healthSystem.OnDied -= OnDied;
             }
 
             if (weaponController != null)
@@ -155,6 +210,26 @@ namespace FairyGate.Combat
             Cleanup();
         }
 
+        private void OnDied(Transform killer)
+        {
+            // Stop all pattern execution and movement
+            if (movementHandler != null)
+            {
+                movementHandler.StopMovement();
+            }
+
+            // Cancel any active skills
+            if (skillSystem != null)
+            {
+                skillSystem.CancelSkill();
+            }
+
+            if (enableDebugLogs)
+            {
+                CombatLogger.LogPattern($"{gameObject.name} died - stopping all AI behavior");
+            }
+        }
+
         private void OnDisable()
         {
             // Cleanup on disable as well
@@ -163,6 +238,10 @@ namespace FairyGate.Combat
 
         private void Update()
         {
+            // Stop all AI behavior if dead
+            if (healthSystem != null && !healthSystem.IsAlive)
+                return;
+
             if (patternDefinition == null || currentNode == null)
                 return;
 
@@ -179,73 +258,52 @@ namespace FairyGate.Combat
             // Update evaluation context
             UpdateEvaluationContext();
 
+            // Handle weapon swapping if enabled
+            if (enableWeaponSwapping && targetPlayer != null)
+            {
+                weaponManager.ConsiderWeaponSwap(targetPlayer, context.distanceToPlayer);
+            }
+
             // Handle combat engagement/disengagement
-            UpdateCombatEngagement();
+            bool justEnteredCombat = combatHandler.UpdateCombatEngagement(targetPlayer, context.distanceToPlayer);
 
-            // Check for transitions
-            // Normal transitions only when skill system is idle
-            // High-priority defensive interrupts (priority >= 15) can override during skill execution
-            bool canCheckTransitions = skillSystem.CurrentState == SkillExecutionState.Uncharged;
-            bool canCheckDefensiveInterrupts = (context.selfCombatState == CombatState.Knockback ||
-                                                 context.selfCombatState == CombatState.Stunned) &&
-                                                skillSystem.CurrentState != SkillExecutionState.Uncharged;
-
-            if (canCheckTransitions || canCheckDefensiveInterrupts)
+            // If we just entered combat and current node wants to start charging, do it now
+            // This handles the case where AI starts out of combat range
+            if (justEnteredCombat && currentNode.startChargingSkill)
             {
-                PatternTransition validTransition = null;
+                combatHandler.StartChargingSkill(currentNode.skillToUse, this, currentNode.telegraph);
 
-                if (canCheckDefensiveInterrupts)
+                if (enableDebugLogs)
                 {
-                    // Only check high-priority transitions (>= 15) that can interrupt skills
-                    validTransition = GetHighPriorityDefensiveTransition(context);
+                    CombatLogger.LogPattern($"{gameObject.name} entered combat - node '{currentNode.nodeName}' started charging {currentNode.skillToUse}");
+                }
+            }
 
-                    if (validTransition != null)
+            // Check and release attack slot if skill completed
+            combatHandler.CheckAndReleaseSlotIfComplete(this);
+
+            // Check for pattern node transitions
+            HandlePatternTransitions();
+
+            // Pattern skill control: Execute charged skill if node requests it
+            if (currentNode.executeChargedSkill && combatController.IsInCombat)
+            {
+                // Check if skill is charged and ready (use node's custom accuracy threshold for ranged attacks)
+                if (combatHandler.IsSkillCharged(currentNode.skillToUse, currentNode.rangedAccuracyThreshold))
+                {
+                    combatHandler.ExecuteReadySkill(currentNode.skillToUse);
+
+                    if (enableDebugLogs)
                     {
-                        Debug.LogWarning($"[PatternExecutor] {gameObject.name} INTERRUPTING skill for defensive transition: {validTransition.targetNodeName}");
-                        // Cancel current skill
-                        skillSystem.CancelSkill();
-                    }
-                }
-                else
-                {
-                    // Normal transition check
-                    validTransition = currentNode.GetValidTransition(context);
-                }
-
-                if (validTransition != null)
-                {
-                    TransitionToNode(validTransition);
-                }
-                else if (canCheckTransitions)
-                {
-                    // No valid transition - check for timeout fallback (only during normal checks)
-                    if (!string.IsNullOrEmpty(currentNode.fallbackNodeName) &&
-                        currentNode.fallbackTimeout > 0f &&
-                        timeInCurrentNode >= currentNode.fallbackTimeout)
-                    {
-                        // Timeout exceeded, transition to fallback node
-                        if (enableDebugLogs)
-                        {
-                            Debug.LogWarning($"[PatternExecutor] {gameObject.name} node '{currentNode.nodeName}' timeout ({currentNode.fallbackTimeout}s) - transitioning to fallback '{currentNode.fallbackNodeName}'");
-                        }
-
-                        ForceTransitionToNode(currentNode.fallbackNodeName);
+                        CombatLogger.LogPattern($"{gameObject.name} node '{currentNode.nodeName}' executed charged {currentNode.skillToUse}");
                     }
                 }
             }
 
-            // Try to use skills if in combat and cooldown is ready
-            if (combatController.IsInCombat && Time.time >= nextSkillTime && skillSystem.CurrentState == SkillExecutionState.Uncharged)
-            {
-                TryUseSkill();
-            }
-
-            // Execute movement behavior for current node (but not during Charged state)
-            // Freeze movement when charged to prevent range drift
-            if (skillSystem.CurrentState != SkillExecutionState.Charged)
-            {
-                ExecuteMovementBehavior();
-            }
+            // Execute movement behavior for current node
+            // Movement will be automatically blocked by MovementController when canMove is false
+            // This ensures movement input is always updated when possible
+            movementHandler.ExecuteMovementBehavior(currentNode, targetPlayer, context);
         }
 
         /// <summary>
@@ -299,7 +357,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"[PatternExecutor] {gameObject.name} hit counters reset");
+                CombatLogger.LogPattern($"{gameObject.name} hit counters reset", CombatLogger.LogLevel.Debug);
             }
         }
 
@@ -313,20 +371,125 @@ namespace FairyGate.Combat
 
             if (targetNode != null)
             {
+                // Cancel any active skill if the current node requests it (respects cancelSkillOnExit flag)
+                // This allows multi-node patterns to maintain charged skills across transitions
+                if (currentNode.cancelSkillOnExit && skillSystem.CurrentState != SkillExecutionState.Uncharged)
+                {
+                    if (enableDebugLogs)
+                    {
+                        CombatLogger.LogPattern($"{gameObject.name} cancelling {skillSystem.CurrentSkill} before forced transition");
+                    }
+                    skillSystem.CancelSkill();
+                }
+
                 currentNode = targetNode;
                 timeInCurrentNode = 0f;
+
+                // Reset movement state tracking (for RetreatFixedDistance)
+                movementHandler.ResetRetreatState();
 
                 // Roll new random value for this node
                 context.randomValue = Random.value;
 
+                // Pattern skill control: Start charging if node requests it
+                // Note: Removed IsInCombat check to allow charging at game start
+                if (currentNode.startChargingSkill)
+                {
+                    combatHandler.StartChargingSkill(currentNode.skillToUse, this, currentNode.telegraph);
+
+                    if (enableDebugLogs)
+                    {
+                        CombatLogger.LogPattern($"{gameObject.name} forced transition - node '{currentNode.nodeName}' started charging {currentNode.skillToUse}");
+                    }
+                }
+
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"[PatternExecutor] {gameObject.name} forced transition to node '{nodeName}'");
+                    CombatLogger.LogPattern($"{gameObject.name} forced transition to node '{nodeName}'");
                 }
             }
             else
             {
-                Debug.LogWarning($"[PatternExecutor] {gameObject.name} failed to force transition - node '{nodeName}' not found");
+                CombatLogger.LogPattern($"{gameObject.name} failed to force transition - node '{nodeName}' not found", CombatLogger.LogLevel.Warning);
+            }
+        }
+
+        /// <summary>
+        /// Handles all pattern transition logic including defensive interrupts and timeout fallbacks.
+        /// </summary>
+        private void HandlePatternTransitions()
+        {
+            bool canCheckTransitions = stateValidator.CanTransitionNode();
+            bool canCheckDefensiveInterrupts = CanCheckDefensiveInterrupts();
+
+            LogTransitionBlockedIfNeeded(canCheckTransitions, canCheckDefensiveInterrupts);
+
+            if (!canCheckTransitions && !canCheckDefensiveInterrupts)
+                return;
+
+            PatternTransition validTransition = FindValidTransition(canCheckDefensiveInterrupts);
+
+            if (validTransition != null)
+            {
+                TransitionToNode(validTransition);
+            }
+            else if (canCheckTransitions)
+            {
+                CheckTimeoutFallback();
+            }
+        }
+
+        private bool CanCheckDefensiveInterrupts()
+        {
+            return (context.selfCombatState == CombatState.Knockback || context.selfCombatState == CombatState.Stunned) &&
+                   skillSystem.CurrentState != SkillExecutionState.Uncharged;
+        }
+
+        private void LogTransitionBlockedIfNeeded(bool canCheckTransitions, bool canCheckDefensiveInterrupts)
+        {
+            bool shouldLog = enableDebugLogs && !canCheckTransitions && !canCheckDefensiveInterrupts &&
+                           timeInCurrentNode > 1f && timeInCurrentNode < 1.05f;
+
+            if (shouldLog)
+            {
+                CombatLogger.LogPattern($"{gameObject.name} transitions blocked - {stateValidator.GetStateDebugInfo()}", CombatLogger.LogLevel.Debug);
+            }
+        }
+
+        private PatternTransition FindValidTransition(bool checkDefensiveInterrupts)
+        {
+            if (checkDefensiveInterrupts)
+            {
+                PatternTransition defensiveTransition = GetHighPriorityDefensiveTransition(context);
+                if (defensiveTransition != null)
+                {
+                    CombatLogger.LogPattern($"{gameObject.name} INTERRUPTING skill for defensive transition: {defensiveTransition.targetNodeName}", CombatLogger.LogLevel.Warning);
+                    skillSystem.CancelSkill();
+                }
+                return defensiveTransition;
+            }
+
+            PatternTransition normalTransition = currentNode.GetValidTransition(context, enableDebugLogs);
+            if (enableDebugLogs && normalTransition != null)
+            {
+                CombatLogger.LogPattern($"{gameObject.name} found valid transition to '{normalTransition.targetNodeName}' (time: {timeInCurrentNode:F3}s, state: {skillSystem.CurrentState})", CombatLogger.LogLevel.Debug);
+            }
+            return normalTransition;
+        }
+
+        private void CheckTimeoutFallback()
+        {
+            bool hasTimeout = !string.IsNullOrEmpty(currentNode.fallbackNodeName) &&
+                            currentNode.fallbackTimeout > 0f &&
+                            timeInCurrentNode >= currentNode.fallbackTimeout;
+
+            if (hasTimeout)
+            {
+                if (enableDebugLogs)
+                {
+                    CombatLogger.LogPattern($"{gameObject.name} node '{currentNode.nodeName}' timeout ({currentNode.fallbackTimeout}s) - transitioning to fallback '{currentNode.fallbackNodeName}'", CombatLogger.LogLevel.Warning);
+                }
+                ForceTransitionToNode(currentNode.fallbackNodeName);
             }
         }
 
@@ -339,8 +502,6 @@ namespace FairyGate.Combat
             if (currentNode == null || currentNode.transitions == null || currentNode.transitions.Count == 0)
                 return null;
 
-            const int DEFENSIVE_INTERRUPT_PRIORITY_THRESHOLD = 15;
-
             // Sort by priority (highest first)
             var sortedTransitions = new List<PatternTransition>(currentNode.transitions);
             sortedTransitions.Sort((a, b) => b.priority.CompareTo(a.priority));
@@ -348,8 +509,8 @@ namespace FairyGate.Combat
             // Return first high-priority transition whose conditions are met
             foreach (var transition in sortedTransitions)
             {
-                // Only consider high-priority transitions
-                if (transition.priority < DEFENSIVE_INTERRUPT_PRIORITY_THRESHOLD)
+                // Only consider high-priority transitions (can interrupt skill execution)
+                if (transition.priority < CombatConstants.DEFENSIVE_INTERRUPT_PRIORITY_THRESHOLD)
                     break; // Since sorted, no point checking lower priority
 
                 if (transition.EvaluateConditions(context))
@@ -365,15 +526,29 @@ namespace FairyGate.Combat
 
             if (targetNode == null)
             {
-                Debug.LogWarning($"[PatternExecutor] {gameObject.name} transition failed - target node '{transition.targetNodeName}' not found");
+                CombatLogger.LogPattern($"{gameObject.name} transition failed - target node '{transition.targetNodeName}' not found", CombatLogger.LogLevel.Warning);
                 return;
             }
 
             string previousNodeName = currentNode.nodeName;
 
+            // Cancel any active skill if the current node requests it (respects cancelSkillOnExit flag)
+            // This allows multi-node patterns to maintain charged skills across transitions
+            if (currentNode.cancelSkillOnExit && skillSystem.CurrentState != SkillExecutionState.Uncharged)
+            {
+                if (enableDebugLogs)
+                {
+                    CombatLogger.LogPattern($"{gameObject.name} cancelling {skillSystem.CurrentSkill} before transition");
+                }
+                skillSystem.CancelSkill();
+            }
+
             // Execute transition
             currentNode = targetNode;
             timeInCurrentNode = 0f;
+
+            // Reset movement state tracking (for RetreatFixedDistance)
+            movementHandler.ResetRetreatState();
 
             // Roll new random value for this node (for RandomChance conditions)
             context.randomValue = Random.value;
@@ -384,6 +559,18 @@ namespace FairyGate.Combat
                 ResetHitCounters();
             }
 
+            // Pattern skill control: Start charging if node requests it
+            // Note: Removed IsInCombat check to allow charging at game start
+            if (currentNode.startChargingSkill)
+            {
+                combatHandler.StartChargingSkill(currentNode.skillToUse, this, currentNode.telegraph);
+
+                if (enableDebugLogs)
+                {
+                    CombatLogger.LogPattern($"{gameObject.name} node '{currentNode.nodeName}' started charging {currentNode.skillToUse}");
+                }
+            }
+
             // Start cooldown if transition requests it
             if (transition.startCooldownID > 0 && transition.cooldownDuration > 0f)
             {
@@ -392,106 +579,114 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"[PatternExecutor] {gameObject.name} transitioned from '{previousNodeName}' to '{currentNode.nodeName}' (priority {transition.priority})");
+                CombatLogger.LogPattern($"{gameObject.name} transitioned from '{previousNodeName}' to '{currentNode.nodeName}' (priority {transition.priority})");
             }
         }
 
         private void UpdateEvaluationContext()
         {
-            // Update self state
+            UpdateSelfState();
+            UpdateRandomValueForDefensiveStates();
+            UpdatePlayerState();
+        }
+
+        private void UpdateSelfState()
+        {
             context.selfHealthPercentage = healthSystem != null
                 ? (healthSystem.CurrentHealth / (float)healthSystem.MaxHealth) * 100f
                 : 100f;
 
-            context.selfStamina = staminaSystem != null
-                ? staminaSystem.CurrentStamina
-                : 0f;
-
+            context.selfStamina = staminaSystem != null ? staminaSystem.CurrentStamina : 0f;
             context.hitsTaken = hitsTaken;
             context.hitsDealt = hitsDealt;
             context.timeInCurrentNode = timeInCurrentNode;
+            context.selfCombatState = combatController != null ? combatController.CurrentCombatState : CombatState.Idle;
+            context.selfSkillState = skillSystem != null ? skillSystem.CurrentState : SkillExecutionState.Uncharged;
 
-            context.selfCombatState = combatController != null
-                ? combatController.CurrentCombatState
-                : CombatState.Idle;
+            context.isCharging = context.selfSkillState == SkillExecutionState.Charging ||
+                                context.selfSkillState == SkillExecutionState.Aiming;
 
+            context.isExecuting = context.selfSkillState == SkillExecutionState.Startup ||
+                                 context.selfSkillState == SkillExecutionState.Active ||
+                                 context.selfSkillState == SkillExecutionState.Recovery;
+        }
+
+        private void UpdateRandomValueForDefensiveStates()
+        {
             // Re-roll random value when entering defensive states for reactive decisions
             // This allows RandomChance conditions to work for interrupt-based transitions
-            if (context.selfCombatState == CombatState.Knockback || context.selfCombatState == CombatState.Stunned)
+            bool isInDefensiveState = context.selfCombatState == CombatState.Knockback ||
+                                     context.selfCombatState == CombatState.Stunned;
+            bool isNewDefensiveState = lastCombatState != context.selfCombatState;
+
+            if (isInDefensiveState && isNewDefensiveState)
             {
-                // Re-roll if this is a NEW defensive state (wasn't in this state last frame)
-                if (lastCombatState != context.selfCombatState)
-                {
-                    context.randomValue = Random.value;
-                }
+                context.randomValue = Random.value;
             }
 
-            // Track state for next frame
             lastCombatState = context.selfCombatState;
+        }
 
-            // Update player state
-            if (targetPlayer != null)
+        private void UpdatePlayerState()
+        {
+            if (targetPlayer == null)
             {
-                context.playerTransform = targetPlayer;
-                context.distanceToPlayer = Vector3.Distance(transform.position, targetPlayer.position);
+                SetDefaultPlayerState();
+                return;
+            }
 
-                CombatController playerCombat = targetPlayer.GetComponent<CombatController>();
-                if (playerCombat != null)
-                {
-                    context.playerSkill = playerCombat.CurrentSkill;
-                    context.playerCombatState = playerCombat.CurrentCombatState;
-                    context.isPlayerCharging = playerCombat.CurrentState == SkillExecutionState.Charging;
-                }
-                else
-                {
-                    context.isPlayerCharging = false;
-                    context.playerSkill = SkillType.Attack;
-                    context.playerCombatState = CombatState.Idle;
-                }
+            context.playerTransform = targetPlayer;
+            context.distanceToPlayer = Vector3.Distance(transform.position, targetPlayer.position);
+
+            CombatController playerCombat = targetPlayer.GetComponent<CombatController>();
+            if (playerCombat != null)
+            {
+                context.playerSkill = playerCombat.CurrentSkill;
+                context.playerCombatState = playerCombat.CurrentCombatState;
+                context.isPlayerCharging = playerCombat.CurrentState == SkillExecutionState.Charging;
             }
             else
             {
-                context.distanceToPlayer = float.MaxValue;
-                context.isPlayerCharging = false;
-                context.playerSkill = SkillType.Attack;
-                context.playerCombatState = CombatState.Idle;
+                SetDefaultPlayerState();
             }
+        }
+
+        private void SetDefaultPlayerState()
+        {
+            context.distanceToPlayer = float.MaxValue;
+            context.isPlayerCharging = false;
+            context.playerSkill = SkillType.Attack;
+            context.playerCombatState = CombatState.Idle;
         }
 
         private void FindPlayer()
         {
-            // Find player by looking for CombatController that isn't this AI
+            // Find closest hostile target using faction system
             var combatants = FindObjectsByType<CombatController>(FindObjectsSortMode.None);
+            float closestSqrDistance = float.MaxValue;
+            Transform closestHostile = null;
+
             foreach (var combatant in combatants)
             {
-                if (combatant != combatController && combatant.name.Contains("Player"))
-                {
-                    targetPlayer = combatant.transform;
+                // Skip self
+                if (combatant == combatController) continue;
 
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"[PatternExecutor] {gameObject.name} found target: {targetPlayer.name}");
-                    }
-                    return;
+                // Only target hostile factions
+                if (!combatController.IsHostileTo(combatant)) continue;
+
+                float sqrDist = (transform.position - combatant.transform.position).sqrMagnitude;
+                if (sqrDist < closestSqrDistance)
+                {
+                    closestSqrDistance = sqrDist;
+                    closestHostile = combatant.transform;
                 }
             }
 
-            // Fallback: Find closest combatant
-            if (targetPlayer == null && combatants.Length > 0)
+            targetPlayer = closestHostile;
+
+            if (targetPlayer != null && enableDebugLogs)
             {
-                float closestSqrDistance = float.MaxValue;
-                foreach (var combatant in combatants)
-                {
-                    if (combatant != combatController)
-                    {
-                        float sqrDist = (transform.position - combatant.transform.position).sqrMagnitude;
-                        if (sqrDist < closestSqrDistance)
-                        {
-                            closestSqrDistance = sqrDist;
-                            targetPlayer = combatant.transform;
-                        }
-                    }
-                }
+                CombatLogger.LogPattern($"{gameObject.name} found hostile target: {targetPlayer.name}");
             }
         }
 
@@ -501,7 +696,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"[PatternExecutor] {gameObject.name} took hit (total: {hitsTaken})");
+                CombatLogger.LogPattern($"{gameObject.name} took hit (total: {hitsTaken})", CombatLogger.LogLevel.Debug);
             }
         }
 
@@ -511,394 +706,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"[PatternExecutor] {gameObject.name} dealt hit to {target.name} (total: {hitsDealt})");
-            }
-        }
-
-        /// <summary>
-        /// Executes the movement behavior defined by the current pattern node.
-        /// This is the core of pattern-driven movement.
-        /// </summary>
-        private void ExecuteMovementBehavior()
-        {
-            if (currentNode == null || movementController == null || targetPlayer == null)
-            {
-                movementController?.SetMovementInput(Vector3.zero);
-                return;
-            }
-
-            // Check if movement is frozen for this node
-            if (currentNode.freezeMovement || !movementController.CanMove)
-            {
-                movementController.SetMovementInput(Vector3.zero);
-                return;
-            }
-
-            // Execute movement based on behavior type
-            switch (currentNode.movementBehavior)
-            {
-                case MovementBehaviorType.MaintainCustomRange:
-                    MaintainCustomRange(currentNode.customTargetRange, currentNode.rangeTolerance);
-                    break;
-
-                case MovementBehaviorType.ApproachTarget:
-                    ApproachTarget();
-                    break;
-
-                case MovementBehaviorType.RetreatFromTarget:
-                    RetreatFromTarget();
-                    break;
-
-                case MovementBehaviorType.CircleStrafeLeft:
-                    CircleStrafe(false);
-                    break;
-
-                case MovementBehaviorType.CircleStrafeRight:
-                    CircleStrafe(true);
-                    break;
-
-                case MovementBehaviorType.HoldPosition:
-                    HoldPosition();
-                    break;
-
-                case MovementBehaviorType.UseFormationSlot:
-                    UseFormationSlot();
-                    break;
-
-                case MovementBehaviorType.FollowAtDistance:
-                    FollowAtDistance();
-                    break;
-
-                default:
-                    movementController.SetMovementInput(Vector3.zero);
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// Maintains a specific range from target.
-        /// </summary>
-        private void MaintainCustomRange(float targetRange, float tolerance)
-        {
-            float distance = context.distanceToPlayer;
-            Vector3 toTarget = (targetPlayer.position - transform.position).normalized;
-
-            if (distance < targetRange - tolerance)
-            {
-                // Too close - move away
-                movementController.SetMovementInput(-toTarget * currentNode.movementSpeedMultiplier);
-            }
-            else if (distance > targetRange + tolerance)
-            {
-                // Too far - move closer
-                movementController.SetMovementInput(toTarget * currentNode.movementSpeedMultiplier);
-            }
-            else
-            {
-                // Within acceptable range - stop
-                movementController.SetMovementInput(Vector3.zero);
-            }
-        }
-
-        /// <summary>
-        /// Moves directly toward target, stopping at weapon range.
-        /// </summary>
-        private void ApproachTarget()
-        {
-            if (weaponController == null || targetPlayer == null)
-            {
-                movementController?.SetMovementInput(Vector3.zero);
-                return;
-            }
-
-            // Stop at weapon range (1.5m for melee, varies for ranged)
-            float weaponRange = weaponController.WeaponData?.isRangedWeapon ?? false
-                ? weaponController.GetRangedRange()
-                : weaponController.GetMeleeRange();
-
-            float distance = context.distanceToPlayer;
-
-            // Approach if beyond weapon range, otherwise stop
-            if (distance > weaponRange)
-            {
-                Vector3 toTarget = (targetPlayer.position - transform.position).normalized;
-                movementController.SetMovementInput(toTarget * currentNode.movementSpeedMultiplier);
-            }
-            else
-            {
-                // At weapon range - stop moving
-                movementController.SetMovementInput(Vector3.zero);
-            }
-        }
-
-        /// <summary>
-        /// Moves directly away from target.
-        /// </summary>
-        private void RetreatFromTarget()
-        {
-            Vector3 awayFromTarget = (transform.position - targetPlayer.position).normalized;
-            movementController.SetMovementInput(awayFromTarget * currentNode.movementSpeedMultiplier);
-        }
-
-        /// <summary>
-        /// Strafes in a circle around the target.
-        /// </summary>
-        private void CircleStrafe(bool clockwise)
-        {
-            Vector3 toTarget = (targetPlayer.position - transform.position).normalized;
-            Vector3 strafeDirection = clockwise
-                ? new Vector3(toTarget.z, 0, -toTarget.x)
-                : new Vector3(-toTarget.z, 0, toTarget.x);
-
-            movementController.SetMovementInput(strafeDirection.normalized * currentNode.movementSpeedMultiplier);
-        }
-
-        /// <summary>
-        /// Stops all movement.
-        /// </summary>
-        private void HoldPosition()
-        {
-            movementController.SetMovementInput(Vector3.zero);
-        }
-
-        /// <summary>
-        /// Requests formation slot from AICoordinator and moves to it.
-        /// Falls back to weapon range if no coordinator available.
-        /// NOTE: Formation system requires SimpleTestAI component, so this is simplified.
-        /// </summary>
-        private void UseFormationSlot()
-        {
-            // Formation system currently requires SimpleTestAI component for the coordinator API
-            // For now, fall back to maintaining weapon range
-            // TODO: Refactor AICoordinator to work with Transform or PatternExecutor directly
-            if (weaponController != null)
-            {
-                float weaponRange = weaponController.WeaponData?.isRangedWeapon ?? false
-                    ? weaponController.GetRangedRange()
-                    : weaponController.GetMeleeRange();
-                MaintainCustomRange(weaponRange, currentNode.rangeTolerance);
-            }
-            else
-            {
-                movementController?.SetMovementInput(Vector3.zero);
-            }
-        }
-
-        /// <summary>
-        /// Follows target at a safe distance (good for ranged characters).
-        /// Classic Mabinogi: All melee weapons use uniform range.
-        /// </summary>
-        private void FollowAtDistance()
-        {
-            // Use a safe follow distance (longer than optimal range)
-            float followDistance = 6.0f; // Default safe distance
-
-            if (weaponController != null)
-            {
-                // Note: GetMeleeRange() returns uniform range for all melee weapons (classic Mabinogi design)
-                bool isRanged = weaponController.WeaponData?.isRangedWeapon ?? false;
-                float baseRange = isRanged
-                    ? weaponController.GetRangedRange()  // Varies by ranged weapon type
-                    : weaponController.GetMeleeRange();  // Uniform for all melee weapons
-                followDistance = baseRange * 1.5f; // 150% of weapon range
-            }
-
-            MaintainCustomRange(followDistance, currentNode.rangeTolerance);
-        }
-
-        /// <summary>
-        /// Updates combat engagement/disengagement based on distance to target.
-        /// </summary>
-        private void UpdateCombatEngagement()
-        {
-            if (targetPlayer == null || combatController == null)
-                return;
-
-            float sqrDistance = context.distanceToPlayer * context.distanceToPlayer;
-            float sqrEngageDistance = engageDistance * engageDistance;
-            float sqrDisengageDistance = (engageDistance * 1.5f) * (engageDistance * 1.5f);
-
-            // Enter combat if player within engage distance
-            if (!combatController.IsInCombat && sqrDistance <= sqrEngageDistance)
-            {
-                combatController.EnterCombat(targetPlayer);
-
-                if (enableDebugLogs)
-                {
-                    Debug.Log($"[PatternExecutor] {gameObject.name} engaged {targetPlayer.name} in combat");
-                }
-            }
-
-            // Exit combat if player too far
-            if (combatController.IsInCombat && sqrDistance > sqrDisengageDistance)
-            {
-                combatController.ExitCombat();
-
-                if (enableDebugLogs)
-                {
-                    Debug.Log($"[PatternExecutor] {gameObject.name} disengaged from combat (too far)");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Attempts to use a skill based on the current pattern node.
-        /// </summary>
-        private void TryUseSkill()
-        {
-            if (enableDebugLogs && context.selfCombatState == CombatState.Knockback)
-            {
-                Debug.Log($"[PatternExecutor] {gameObject.name} TryUseSkill() called while in Knockback! Current node: {currentNode?.nodeName}");
-            }
-
-            // Check if pattern node is ready
-            if (!IsNodeReady())
-            {
-                if (enableDebugLogs)
-                {
-                    Debug.Log($"[PatternExecutor] {gameObject.name} pattern node '{currentNode.nodeName}' not ready - skipping skill");
-                }
-                return;
-            }
-
-            // Request attack permission if coordination enabled
-            if (useCoordination && coordinator != null && !hasAttackSlot)
-            {
-                // Note: AICoordinator API requires SimpleTestAI, so we can't request slots directly yet
-                // TODO: Refactor AICoordinator API to work with Transform or PatternExecutor
-                // For now, skip coordination or require SimpleTestAI component
-                if (enableDebugLogs)
-                {
-                    Debug.LogWarning($"[PatternExecutor] {gameObject.name} coordination enabled but API requires SimpleTestAI component");
-                }
-            }
-
-            // Get skill from current node
-            SkillType selectedSkill = GetCurrentSkill();
-
-            // Check if can charge skill
-            if (!skillSystem.CanChargeSkill(selectedSkill))
-            {
-                if (enableDebugLogs)
-                {
-                    Debug.Log($"[PatternExecutor] {gameObject.name} cannot charge {selectedSkill} (insufficient stamina or wrong state)");
-                }
-                return;
-            }
-
-            // Check if in range before charging (prevents slow shuffle while charging)
-            if (weaponController != null && targetPlayer != null)
-            {
-                float weaponRange = weaponController.WeaponData?.isRangedWeapon ?? false
-                    ? weaponController.GetRangedRange()
-                    : weaponController.GetMeleeRange();
-
-                float distance = context.distanceToPlayer;
-
-                // Don't start charging if still out of range - keep approaching at full speed
-                if (distance > weaponRange)
-                {
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"[PatternExecutor] {gameObject.name} waiting to reach range ({distance:F1} > {weaponRange:F1}) before charging {selectedSkill}");
-                    }
-                    return;
-                }
-            }
-
-            // Start charging the skill
-            if (selectedSkill == SkillType.Attack)
-            {
-                // Attack doesn't require charging - execute immediately
-                skillSystem.ExecuteSkill(SkillType.Attack);
-
-                if (enableDebugLogs)
-                {
-                    Debug.Log($"[PatternExecutor] {gameObject.name} executed {selectedSkill}");
-                }
-            }
-            else
-            {
-                // Other skills require charging
-                skillSystem.StartCharging(selectedSkill);
-
-                if (enableDebugLogs)
-                {
-                    Debug.Log($"[PatternExecutor] {gameObject.name} charging {selectedSkill}");
-                }
-
-                // Start coroutine to execute when charged
-                if (currentSkillCoroutine != null)
-                {
-                    StopCoroutine(currentSkillCoroutine);
-                }
-                currentSkillCoroutine = StartCoroutine(ExecuteSkillWhenCharged(selectedSkill));
-            }
-
-            // Set next skill time
-            nextSkillTime = Time.time + skillCooldown + Random.Range(-randomVariance, randomVariance);
-        }
-
-        /// <summary>
-        /// Coroutine that waits for skill to complete execution cycle.
-        /// </summary>
-        private System.Collections.IEnumerator ExecuteSkillWhenCharged(SkillType skillType)
-        {
-            float maxWaitTime = 5.0f;
-            float startTime = Time.time;
-            bool executionTriggered = false;
-
-            // Wait for complete execution cycle
-            while (skillSystem.CurrentState != SkillExecutionState.Uncharged &&
-                   Time.time - startTime < maxWaitTime)
-            {
-                // Trigger execution when charged
-                if (!executionTriggered &&
-                    skillSystem.CurrentState == SkillExecutionState.Charged &&
-                    skillSystem.CurrentSkill == skillType)
-                {
-                    skillSystem.ExecuteSkill(skillType);
-                    executionTriggered = true;
-
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"[PatternExecutor] {gameObject.name} executed {skillType}");
-                    }
-                }
-
-                yield return null;
-            }
-
-            // Check if completed or timed out
-            if (skillSystem.CurrentState != SkillExecutionState.Uncharged)
-            {
-                if (enableDebugLogs)
-                {
-                    Debug.LogWarning($"[PatternExecutor] {gameObject.name} skill {skillType} timed out in state {skillSystem.CurrentState} - cancelling");
-                }
-                skillSystem.CancelSkill();
-            }
-            else if (enableDebugLogs)
-            {
-                Debug.Log($"[PatternExecutor] {gameObject.name} skill {skillType} completed successfully");
-            }
-
-            currentSkillCoroutine = null;
-        }
-
-        /// <summary>
-        /// Updates weapon capability flags based on current weapon.
-        /// </summary>
-        private void UpdateWeaponCapabilities()
-        {
-            if (weaponController != null && weaponController.WeaponData != null)
-            {
-                hasRangedWeapon = weaponController.WeaponData.isRangedWeapon;
-
-                if (enableDebugLogs)
-                {
-                    Debug.Log($"[PatternExecutor] {gameObject.name} weapon capabilities: ranged={hasRangedWeapon}");
-                }
+                CombatLogger.LogPattern($"{gameObject.name} dealt hit to {target.name} (total: {hitsDealt})", CombatLogger.LogLevel.Debug);
             }
         }
 
@@ -907,26 +715,75 @@ namespace FairyGate.Combat
         /// </summary>
         private void Cleanup()
         {
-            if (currentSkillCoroutine != null)
+            combatHandler.Cleanup(this);
+        }
+
+        // N+1 Combo System for AI
+
+        /// <summary>
+        /// Attempts to execute an N+1 combo extension if weapon controller has valid window.
+        /// Returns true if N+1 was attempted (regardless of success).
+        /// </summary>
+        public bool TryAINPlusOneCombo()
+        {
+            // Check if weapon controller has valid N+1 window
+            if (weaponController == null || !weaponController.IsInNPlusOneWindow)
             {
-                StopCoroutine(currentSkillCoroutine);
-                currentSkillCoroutine = null;
+                return false;
             }
 
-            ReleaseAttackSlot();
+            // Roll chance to attempt N+1 (configurable per archetype)
+            float roll = Random.value;
+            if (roll >= nPlusOneChance)
+            {
+                if (enableDebugLogs)
+                {
+                    CombatLogger.LogAI($"[AI N+1] {gameObject.name} rolled {roll:F2} (needed < {nPlusOneChance:F2}) - skipping N+1");
+                }
+                return false; // Didn't roll high enough
+            }
+
+            // Choose appropriate combo finisher
+            SkillType finisher = ChooseComboFinisher();
+
+            // Try to execute as N+1 combo
+            bool success = skillSystem.TryExecuteSkillFromCombo(finisher);
+
+            if (success)
+            {
+                CombatLogger.LogAI($"[AI N+1] {gameObject.name} executed N+1 combo with {finisher} " +
+                                  $"(chance: {nPlusOneChance:P0}, window: {weaponController.CurrentStunProgress:P0})");
+            }
+            else if (enableDebugLogs)
+            {
+                CombatLogger.LogAI($"[AI N+1] {gameObject.name} failed N+1 attempt with {finisher} (not charged or no stamina)");
+            }
+
+            return true; // Attempted N+1 (even if failed)
         }
 
         /// <summary>
-        /// Releases attack slot if held.
+        /// Chooses an appropriate combo finisher skill based on situation and preferences.
         /// </summary>
-        private void ReleaseAttackSlot()
+        private SkillType ChooseComboFinisher()
         {
-            if (hasAttackSlot && coordinator != null)
+            // If no preferred finishers configured, default to Smash
+            if (preferredComboFinishers == null || preferredComboFinishers.Length == 0)
             {
-                // Note: AICoordinator API requires SimpleTestAI
-                // TODO: Refactor to work with PatternExecutor directly
-                hasAttackSlot = false;
+                return SkillType.Smash;
             }
+
+            // Check if Windmill is available and randomly prefer it for variety
+            // (In future, could check nearby enemy count if that gets added to context)
+            bool hasWindmill = System.Array.Exists(preferredComboFinishers, skill => skill == SkillType.Windmill);
+            if (hasWindmill && Random.value < 0.3f) // 30% chance to prefer AoE
+            {
+                return SkillType.Windmill;
+            }
+
+            // Otherwise, pick random from preferred finishers
+            int randomIndex = Random.Range(0, preferredComboFinishers.Length);
+            return preferredComboFinishers[randomIndex];
         }
 
         private void OnGUI()

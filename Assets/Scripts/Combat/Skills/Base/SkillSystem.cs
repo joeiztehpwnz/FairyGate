@@ -28,10 +28,6 @@ namespace FairyGate.Combat
         [SerializeField] private bool enableDebugLogs = true;
         [SerializeField] private bool showSkillGUI = true;
 
-        [Header("State Pattern (Phase 1: Infrastructure)")]
-        [SerializeField] private bool useStateMachine = false; // Toggle for testing new state pattern
-        [SerializeField] private string currentStateName = ""; // Debug: shows current state class name
-
         // C# Events (replaces UnityEvents for performance)
         public event Action<SkillType> OnSkillCharged;
         public event Action<SkillType, bool> OnSkillExecuted; // skill, wasHit
@@ -50,7 +46,6 @@ namespace FairyGate.Combat
         private SkillStateMachine stateMachine;
 
         // Skill timing
-        private Coroutine currentSkillCoroutine;
         private bool canAct = true;
 
         // Input buffering during CC
@@ -115,7 +110,7 @@ namespace FairyGate.Combat
 
             if (characterStats == null)
             {
-                Debug.LogWarning($"SkillSystem on {gameObject.name} has no CharacterStats assigned. Using default values.");
+                CombatLogger.LogSystem($"SkillSystem on {gameObject.name} has no CharacterStats assigned. Using default values.", CombatLogger.LogLevel.Warning);
                 characterStats = CharacterStats.CreateDefaultStats();
             }
 
@@ -135,13 +130,8 @@ namespace FairyGate.Combat
         // Renamed from Update() to CombatUpdate() for centralized update management
         public void CombatUpdate(float deltaTime)
         {
-            // Phase 1: Update state machine (runs alongside coroutines for now)
-            if (useStateMachine && stateMachine != null)
-            {
-                stateMachine.Update(deltaTime);
-                // Update debug state name for inspector
-                currentStateName = stateMachine.GetCurrentStateName();
-            }
+            // Update state machine
+            stateMachine.Update(deltaTime);
 
             // Check if in a "locked" state (CC or Active phase)
             bool isLocked = !canAct || currentState == SkillExecutionState.Active;
@@ -177,7 +167,7 @@ namespace FairyGate.Combat
                 {
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{gameObject.name}: Cannot swap weapons during Active skill state");
+                        CombatLogger.LogWeapon($"{gameObject.name}: Cannot swap weapons during Active skill state");
                     }
                     return;
                 }
@@ -185,7 +175,7 @@ namespace FairyGate.Combat
                 bool swapped = weaponController?.SwapWeapons() ?? false;
                 if (swapped && enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name}: Swapped weapon successfully");
+                    CombatLogger.LogWeapon($"{gameObject.name}: Swapped weapon successfully");
                 }
                 return;
             }
@@ -201,6 +191,69 @@ namespace FairyGate.Combat
 
                 CancelSkill();
                 return;
+            }
+
+            // N+1 PRIORITY: Check for N+1 combo extension FIRST (before any other skill logic)
+            // Detects both perfect timing (70-95%) and early attempts (<70%) with penalty
+            if (weaponController != null && weaponController.CurrentStunProgress > 0f)
+            {
+                // Check each skill button for N+1 execution or early penalty
+                if (Input.GetKeyDown(smashKey))
+                {
+                    if (weaponController.IsInNPlusOneWindow)
+                    {
+                        // Perfect timing - execute as N+1 combo
+                        if (TryExecuteSkillFromCombo(SkillType.Smash))
+                            return;
+                    }
+                    else if (weaponController.CurrentStunProgress < CombatConstants.N_PLUS_ONE_WINDOW_START)
+                    {
+                        // Too early - apply penalty and execute normally
+                        HandleEarlyN1Attempt(SkillType.Smash);
+                        return;
+                    }
+                    // If too late (>95%), fall through to normal execution
+                }
+                else if (Input.GetKeyDown(windmillKey))
+                {
+                    if (weaponController.IsInNPlusOneWindow)
+                    {
+                        if (TryExecuteSkillFromCombo(SkillType.Windmill))
+                            return;
+                    }
+                    else if (weaponController.CurrentStunProgress < CombatConstants.N_PLUS_ONE_WINDOW_START)
+                    {
+                        HandleEarlyN1Attempt(SkillType.Windmill);
+                        return;
+                    }
+                }
+                else if (Input.GetKeyDown(counterKey))
+                {
+                    if (weaponController.IsInNPlusOneWindow)
+                    {
+                        if (TryExecuteSkillFromCombo(SkillType.Counter))
+                            return;
+                    }
+                    else if (weaponController.CurrentStunProgress < CombatConstants.N_PLUS_ONE_WINDOW_START)
+                    {
+                        HandleEarlyN1Attempt(SkillType.Counter);
+                        return;
+                    }
+                }
+                else if (Input.GetKeyDown(defenseKey))
+                {
+                    if (weaponController.IsInNPlusOneWindow)
+                    {
+                        if (TryExecuteSkillFromCombo(SkillType.Defense))
+                            return;
+                    }
+                    else if (weaponController.CurrentStunProgress < CombatConstants.N_PLUS_ONE_WINDOW_START)
+                    {
+                        HandleEarlyN1Attempt(SkillType.Defense);
+                        return;
+                    }
+                }
+                // Note: Attack already handles N+1 in its own section below
             }
 
             // RangedAttack firing input (if ranged attack is being aimed)
@@ -219,7 +272,11 @@ namespace FairyGate.Combat
             {
                 if (Input.GetKeyDown(GetSkillKey(currentSkill)))
                 {
-                    ExecuteSkill(currentSkill);
+                    // N+1 System: Try combo extension first, fallback to normal execution
+                    if (!TryExecuteSkillFromCombo(currentSkill))
+                    {
+                        ExecuteSkill(currentSkill);
+                    }
                     return;
                 }
             }
@@ -235,6 +292,23 @@ namespace FairyGate.Combat
                         // Attack skill executes immediately without charging
                         if (inputSkill.Value == SkillType.Attack)
                         {
+                            // N+1 System: Check for combo extension or early penalty
+                            if (weaponController != null && weaponController.CurrentStunProgress > 0f)
+                            {
+                                if (weaponController.IsInNPlusOneWindow)
+                                {
+                                    // Perfect timing - execute as N+1 combo
+                                    if (TryExecuteSkillFromCombo(SkillType.Attack))
+                                        return;
+                                }
+                                else if (weaponController.CurrentStunProgress < CombatConstants.N_PLUS_ONE_WINDOW_START)
+                                {
+                                    // Too early - apply penalty and execute normally
+                                    HandleEarlyN1Attempt(SkillType.Attack);
+                                    return;
+                                }
+                            }
+                            // Not in N+1 state or too late - execute normally
                             ExecuteSkill(SkillType.Attack);
                         }
                         // RangedAttack skill enters aiming state
@@ -266,7 +340,7 @@ namespace FairyGate.Combat
 
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} buffered skill: {bufferedSkill.Value} (during CC)");
+                    CombatLogger.LogSkill($"{gameObject.name} buffered skill: {bufferedSkill.Value} (during CC)", CombatLogger.LogLevel.Debug);
                 }
             }
         }
@@ -280,7 +354,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} executing buffered skill: {skillToExecute}");
+                CombatLogger.LogSkill($"{gameObject.name} executing buffered skill: {skillToExecute}");
             }
 
             // Execute buffered skill based on type
@@ -314,7 +388,7 @@ namespace FairyGate.Combat
                 {
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{gameObject.name} cannot lunge: no target");
+                        CombatLogger.LogSkill($"{gameObject.name} cannot lunge: no target", CombatLogger.LogLevel.Debug);
                     }
                     return false;
                 }
@@ -325,7 +399,7 @@ namespace FairyGate.Combat
                 {
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{gameObject.name} too close for Lunge ({distance:F1} < {CombatConstants.LUNGE_MIN_RANGE})");
+                        CombatLogger.LogSkill($"{gameObject.name} too close for Lunge ({distance:F1} < {CombatConstants.LUNGE_MIN_RANGE})", CombatLogger.LogLevel.Debug);
                     }
                     return false;
                 }
@@ -334,7 +408,7 @@ namespace FairyGate.Combat
                 {
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{gameObject.name} too far for Lunge ({distance:F1} > {CombatConstants.LUNGE_MAX_RANGE})");
+                        CombatLogger.LogSkill($"{gameObject.name} too far for Lunge ({distance:F1} > {CombatConstants.LUNGE_MAX_RANGE})", CombatLogger.LogLevel.Debug);
                     }
                     return false;
                 }
@@ -413,7 +487,7 @@ namespace FairyGate.Combat
 
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name}: Drew {currentSkill} slash toward {(target != null ? target.name : "no target")} (active: {activeTime:F2}s, recovery: {recoveryTime:F2}s, total: {duration:F2}s)");
+                    CombatLogger.LogWeapon($"{gameObject.name}: Drew {currentSkill} slash toward {(target != null ? target.name : "no target")} (active: {activeTime:F2}s, recovery: {recoveryTime:F2}s, total: {duration:F2}s)", CombatLogger.LogLevel.Debug);
                 }
             }
         }
@@ -424,7 +498,7 @@ namespace FairyGate.Combat
             {
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} cannot charge skill {skillType} (not in combat or insufficient stamina)");
+                    CombatLogger.LogSkill($"{gameObject.name} cannot charge skill {skillType} (not in combat or insufficient stamina)", CombatLogger.LogLevel.Debug);
                 }
                 return;
             }
@@ -445,23 +519,12 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} started charging {skillType}");
+                CombatLogger.LogSkill($"{gameObject.name} started charging {skillType}");
             }
 
             // Phase 2: Use state machine if enabled, otherwise use coroutines
-            if (useStateMachine)
-            {
-                // State pattern approach
-                stateMachine.TransitionTo(new ChargingState(this, skillType));
-            }
-            else
-            {
-                // Original coroutine approach
-                SetState(SkillExecutionState.Charging);
-                chargeProgress = 0f;
-                movementController.ApplySkillMovementRestriction(skillType, currentState);
-                currentSkillCoroutine = StartCoroutine(ChargeSkill(skillType));
-            }
+            // State pattern approach
+            stateMachine.TransitionTo(new ChargingState(this, skillType));
         }
 
         public void ExecuteSkill(SkillType skillType)
@@ -470,7 +533,7 @@ namespace FairyGate.Combat
             {
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} cannot execute skill {skillType} (not charged or wrong skill)");
+                    CombatLogger.LogSkill($"{gameObject.name} cannot execute skill {skillType} (not charged or wrong skill)", CombatLogger.LogLevel.Debug);
                 }
                 return;
             }
@@ -483,12 +546,14 @@ namespace FairyGate.Combat
 
                 if (distance > range)
                 {
-                    // Out of range - start auto-movement to target (like Classic Mabinogi)
+                    // Out of range - transition to ApproachingState (auto-movement)
                     if (enableDebugLogs)
                     {
-                        Debug.Log($"{gameObject.name} out of range for {skillType} ({distance:F1} > {range:F1}) - auto-moving to target");
+                        CombatLogger.LogSkill($"{gameObject.name} out of range for {skillType} ({distance:F1} > {range:F1}) - transitioning to ApproachingState");
                     }
-                    StartCoroutine(MoveToTargetAndExecute(skillType, range));
+
+                    // Transition to ApproachingState which will auto-move and execute when in range
+                    stateMachine.TransitionTo(new ApproachingState(this, skillType));
                     return;
                 }
             }
@@ -505,673 +570,241 @@ namespace FairyGate.Combat
             {
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} insufficient stamina to execute {skillType}");
+                    CombatLogger.LogStamina($"{gameObject.name} insufficient stamina to execute {skillType}", CombatLogger.LogLevel.Debug);
                 }
                 return;
             }
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} executing {skillType}");
+                CombatLogger.LogSkill($"{gameObject.name} executing {skillType}");
             }
 
             // Phase 2/5: Use state machine if enabled, otherwise use coroutines
-            if (useStateMachine)
+            // Phase 5: RangedAttack goes directly from Aiming to Active (skip Startup)
+            if (skillType == SkillType.RangedAttack && currentState == SkillExecutionState.Aiming)
             {
-                // Phase 5: RangedAttack goes directly from Aiming to Active (skip Startup)
-                if (skillType == SkillType.RangedAttack && currentState == SkillExecutionState.Aiming)
-                {
-                    stateMachine.TransitionTo(new ActiveState(this, skillType));
-                }
-                else
-                {
-                    // Standard flow: transition from Charged to Startup
-                    stateMachine.TransitionTo(new StartupState(this, skillType));
-                }
+                stateMachine.TransitionTo(new ActiveState(this, skillType));
             }
             else
             {
-                // Original coroutine approach
-                currentSkillCoroutine = StartCoroutine(ExecuteSkillCoroutine(skillType));
+                // Standard flow: transition from Charged to Startup
+                stateMachine.TransitionTo(new StartupState(this, skillType));
             }
-        }
-
-        private IEnumerator MoveToTargetAndExecute(SkillType skillType, float requiredRange)
-        {
-            Transform target = combatController.CurrentTarget;
-            if (target == null)
-            {
-                if (enableDebugLogs) Debug.Log($"{gameObject.name} lost target during auto-move");
-                movementController.SetMovementInput(Vector3.zero);
-                yield break;
-            }
-
-            // Auto-move toward target until in range
-            float checkInterval = 0.1f;
-            float elapsed = 0f;
-            float maxMoveTime = 5f; // Timeout after 5 seconds
-
-            while (elapsed < maxMoveTime)
-            {
-                // Check if target still exists
-                if (target == null || combatController.CurrentTarget != target)
-                {
-                    if (enableDebugLogs) Debug.Log($"{gameObject.name} target changed/lost during auto-move");
-                    movementController.SetMovementInput(Vector3.zero);
-                    yield break;
-                }
-
-                // Check if in range
-                float distance = Vector3.Distance(transform.position, target.position);
-                if (distance <= requiredRange)
-                {
-                    // In range - stop movement and execute skill
-                    movementController.SetMovementInput(Vector3.zero);
-                    if (enableDebugLogs) Debug.Log($"{gameObject.name} reached target, executing {skillType}");
-                    ExecuteSkillImmediately(skillType);
-                    yield break;
-                }
-
-                // Move toward target
-                Vector3 direction = (target.position - transform.position).normalized;
-                movementController.SetMovementInput(direction);
-
-                yield return new WaitForSeconds(checkInterval);
-                elapsed += checkInterval;
-            }
-
-            // Timeout - stop movement
-            if (enableDebugLogs) Debug.Log($"{gameObject.name} auto-move timeout for {skillType}");
-            movementController.SetMovementInput(Vector3.zero);
         }
 
         /// <summary>
-        /// Classic Mabinogi-style charging: Move to target at full speed first, THEN start charging when in range.
-        /// This prevents the "charge-and-inch" behavior where AI charges while out of range and moves slowly.
+        /// Attempts to execute a skill as an N+1 combo extension during enemy stun window.
+        /// Returns true if successfully executed as N+1, false otherwise.
+        /// N+1 execution bypasses charging requirements - skills execute instantly during the window.
         /// </summary>
-        public void StartChargingWithAutoMove(SkillType skillType)
+        public bool TryExecuteSkillFromCombo(SkillType skillType)
         {
-            // First check if we can even charge this skill
-            if (!CanChargeSkill(skillType))
+            // 1. Check if weapon controller has valid N+1 window
+            if (weaponController == null || !weaponController.IsInNPlusOneWindow)
+            {
+                return false; // Not in valid N+1 window
+            }
+
+            // 2. Check stamina availability (N+1 bypasses charging requirement)
+            int requiredStamina = GetSkillStaminaCost(skillType);
+            if (!staminaSystem.HasStaminaFor(requiredStamina))
             {
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} cannot charge skill {skillType} (not in combat or insufficient stamina)");
+                    CombatLogger.LogCombat($"[N+1] {gameObject.name} cannot execute {skillType} - insufficient stamina", CombatLogger.LogLevel.Debug);
                 }
-                return;
+                return false; // Not enough stamina
             }
 
-            // For offensive skills, check range before charging
-            if (IsOffensiveSkill(skillType) && combatController != null && combatController.CurrentTarget != null)
+            // 3. N+1 INSTANT EXECUTION: Skip charging, execute immediately
+            // Force the skill state to allow execution
+            currentSkill = skillType;
+            currentState = SkillExecutionState.Charged; // Pretend it's charged for execution
+
+            if (enableDebugLogs)
             {
-                float range = weaponController.GetSkillRange(skillType);
-                float distance = Vector3.Distance(transform.position, combatController.CurrentTarget.position);
-
-                if (distance > range)
-                {
-                    // Out of range - move at FULL SPEED first, then charge when in range
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"{gameObject.name} out of range for {skillType} ({distance:F1} > {range:F1}) - moving to range before charging");
-                    }
-                    StartCoroutine(MoveToTargetAndCharge(skillType, range));
-                    return;
-                }
+                CombatLogger.LogCombat($"[N+1 COMBO] {gameObject.name} executing {skillType} as combo extension (instant, no charge required)");
             }
 
-            // In range or no range check needed - charge immediately
-            StartCharging(skillType);
+            // 4. Execute skill immediately as combo extension
+            ExecuteSkill(skillType);
+
+            // 5. Reset combo counter on knockdown meter tracker
+            var knockdownTracker = GetComponent<KnockdownMeterTracker>();
+            if (knockdownTracker != null)
+            {
+                knockdownTracker.ResetComboCounter();
+            }
+
+            // 6. Notify weapon controller that N+1 was executed
+            weaponController.OnNPlusOneExecuted();
+
+            // 6. Log successful N+1 execution
+            CombatLogger.LogCombat($"[N+1 COMBO] {gameObject.name} extended combo with {skillType} " +
+                                  $"at {weaponController.CurrentStunProgress:P0} of stun window");
+
+            return true;
         }
 
         /// <summary>
-        /// Move toward target at full speed, then start charging when in range.
-        /// Similar to MoveToTargetAndExecute but calls StartCharging() instead of ExecuteSkillImmediately().
+        /// Handles early N+1 timing attempts (pressed before 70% window opens).
+        /// Applies stamina penalty and executes skill normally with full startup.
+        /// N+1 System: Punishes button mashing while still allowing skill execution.
         /// </summary>
-        private IEnumerator MoveToTargetAndCharge(SkillType skillType, float requiredRange)
+        private void HandleEarlyN1Attempt(SkillType skillType)
         {
-            Transform target = combatController.CurrentTarget;
-            if (target == null)
+            // Calculate stamina penalty (50% of skill cost)
+            int fullCost = GetSkillStaminaCost(skillType);
+            int penaltyCost = Mathf.CeilToInt(fullCost * 0.5f);
+
+            // Apply stamina penalty
+            if (staminaSystem != null && staminaSystem.HasStaminaFor(penaltyCost))
             {
-                if (enableDebugLogs) Debug.Log($"{gameObject.name} lost target during auto-move to charge");
-                movementController.SetMovementInput(Vector3.zero);
-                yield break;
+                staminaSystem.ConsumeStamina(penaltyCost);
             }
 
-            // Auto-move toward target until in range
-            float checkInterval = 0.1f;
-            float elapsed = 0f;
-            float maxMoveTime = 5f; // Timeout after 5 seconds
+            // Log missed timing
+            float missedByPercent = (CombatConstants.N_PLUS_ONE_WINDOW_START - weaponController.CurrentStunProgress) * 100f;
+            CombatLogger.LogCombat($"[N+1 MISS] {gameObject.name} pressed {skillType} too early " +
+                                  $"({weaponController.CurrentStunProgress:P0} < 70%, missed by {missedByPercent:F0}%) " +
+                                  $"- Penalty: {penaltyCost} stamina");
 
-            while (elapsed < maxMoveTime)
+            // Execute skill normally with full startup (if player can charge it)
+            if (CanChargeSkill(skillType))
             {
-                // Check if target still exists
-                if (target == null || combatController.CurrentTarget != target)
-                {
-                    if (enableDebugLogs) Debug.Log($"{gameObject.name} target changed/lost during auto-move to charge");
-                    movementController.SetMovementInput(Vector3.zero);
-                    yield break;
-                }
-
-                // Check if in range
-                float distance = Vector3.Distance(transform.position, target.position);
-                if (distance <= requiredRange)
-                {
-                    // In range - stop movement and start charging
-                    movementController.SetMovementInput(Vector3.zero);
-                    if (enableDebugLogs) Debug.Log($"{gameObject.name} reached target, starting charge for {skillType}");
-                    StartCharging(skillType);
-                    yield break;
-                }
-
-                // Move toward target at full speed (no charge penalty)
-                Vector3 direction = (target.position - transform.position).normalized;
-                movementController.SetMovementInput(direction);
-
-                yield return new WaitForSeconds(checkInterval);
-                elapsed += checkInterval;
+                StartCharging(skillType);
             }
-
-            // Timeout - stop movement
-            if (enableDebugLogs) Debug.Log($"{gameObject.name} auto-move timeout for charging {skillType}");
-            movementController.SetMovementInput(Vector3.zero);
         }
 
-        private bool IsOffensiveSkill(SkillType skillType)
-        {
-            return skillType == SkillType.Attack ||
-                   skillType == SkillType.Smash ||
-                   skillType == SkillType.Lunge ||
-                   skillType == SkillType.Windmill ||
-                   skillType == SkillType.RangedAttack;
-        }
-
+        /// <summary>
+        /// Cancels the currently charging or executing skill.
+        /// Implements ISkillExecutor.CancelSkill()
+        /// </summary>
         public void CancelSkill()
         {
-            if (currentState == SkillExecutionState.Uncharged) return;
-
-            SkillType skilltToCancel = currentSkill;
-
-            // Cannot cancel during active frames
-            if (currentState == SkillExecutionState.Active)
+            if (currentState == SkillExecutionState.Uncharged)
             {
-                if (enableDebugLogs)
-                {
-                    Debug.Log($"{gameObject.name} cannot cancel {skilltToCancel} during active frames");
-                }
-                return;
+                return; // Nothing to cancel
             }
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} cancelled {skilltToCancel}");
+                CombatLogger.LogSkill($"{gameObject.name} cancelling skill {currentSkill} (was in state: {currentState})");
             }
 
-            // Phase 3: Use state machine if enabled, otherwise use coroutines
-            if (useStateMachine)
-            {
-                Debug.Log($"<color=magenta>[STATE PATTERN] {gameObject.name} CancelSkill() called - transitioning from {stateMachine.GetCurrentStateName()} to UnchargedState</color>");
+            // Reset state
+            SkillType cancelledSkill = currentSkill;
+            currentState = SkillExecutionState.Uncharged;
+            currentSkill = SkillType.Attack; // Reset to default
+            chargeProgress = 0f;
 
-                // State pattern approach - transition to Uncharged
-                // OnExit() of current state will handle cleanup (including WaitingState!)
+            // Stop any active coroutines
+            StopAllCoroutines();
+
+            // Transition state machine to uncharged
+            if (stateMachine != null)
+            {
                 stateMachine.TransitionTo(new UnchargedState(this, SkillType.Attack));
-
-                // Fire cancel event
-                TriggerSkillCancelled(skilltToCancel);
             }
-            else
+
+            // Enable movement
+            if (movementController != null)
             {
-                // Original coroutine approach
-                if (currentSkillCoroutine != null)
-                {
-                    StopCoroutine(currentSkillCoroutine);
-                    currentSkillCoroutine = null;
-                }
-
-                SetState(SkillExecutionState.Uncharged);
-                chargeProgress = 0f;
-                movementController.SetMovementModifier(1f);
-                OnSkillCancelled?.Invoke(skilltToCancel);
+                movementController.EnableMovement();
             }
+
+            // Fire cancellation event
+            OnSkillCancelled?.Invoke(cancelledSkill);
+            OnSkillStateChanged?.Invoke(cancelledSkill, SkillExecutionState.Uncharged);
         }
 
+        /// <summary>
+        /// Starts aiming for RangedAttack skill.
+        /// </summary>
         public void StartAiming(SkillType skillType)
         {
             if (skillType != SkillType.RangedAttack)
             {
-                Debug.LogWarning($"StartAiming called with non-ranged skill: {skillType}");
+                if (enableDebugLogs)
+                {
+                    CombatLogger.LogSkill($"{gameObject.name} StartAiming called for non-ranged skill {skillType}", CombatLogger.LogLevel.Warning);
+                }
                 return;
             }
 
             if (!combatController.IsInCombat)
             {
                 if (enableDebugLogs)
-                    Debug.Log($"{gameObject.name} cannot aim: not in combat");
+                {
+                    CombatLogger.LogSkill($"{gameObject.name} cannot aim: not in combat", CombatLogger.LogLevel.Debug);
+                }
                 return;
             }
 
-            if (combatController.CurrentTarget == null)
-            {
-                if (enableDebugLogs)
-                    Debug.Log($"{gameObject.name} cannot aim: no target");
-                return;
-            }
-
-            // STAMINA CHECK MOVED HERE (before aiming starts)
+            // Check stamina requirements
             int requiredStamina = GetSkillStaminaCost(SkillType.RangedAttack);
             if (!staminaSystem.HasStaminaFor(requiredStamina))
             {
                 if (enableDebugLogs)
-                    Debug.Log($"{gameObject.name} cannot aim: insufficient stamina");
+                {
+                    CombatLogger.LogStamina($"{gameObject.name} cannot aim RangedAttack (insufficient stamina)", CombatLogger.LogLevel.Debug);
+                }
                 return;
             }
 
-            // Check if target in range (use ranged attack range from dual-range system)
-            float weaponRange = weaponController != null
-                ? weaponController.GetRangedRange()
-                : CombatConstants.RANGED_ATTACK_BASE_RANGE;
-
-            float distanceToTarget = Vector3.Distance(transform.position, combatController.CurrentTarget.position);
-            if (distanceToTarget > weaponRange)
+            // Cancel current skill if switching
+            if (currentState != SkillExecutionState.Uncharged)
             {
-                if (enableDebugLogs)
-                    Debug.Log($"{gameObject.name} cannot aim: target out of range ({distanceToTarget:F1} > {weaponRange})");
-                return;
+                CancelSkill();
             }
 
-            currentSkill = skillType;
-
-            // Phase 5: Use state machine if enabled, otherwise use coroutines
-            if (useStateMachine)
-            {
-                // State pattern approach - transition to Aiming
-                stateMachine.TransitionTo(new AimingState(this, skillType));
-            }
-            else
-            {
-                // Original coroutine approach
-                SetState(SkillExecutionState.Aiming);
-
-                // Start accuracy tracking
-                if (accuracySystem != null)
-                    accuracySystem.StartAiming(combatController.CurrentTarget);
-
-                // Apply movement restriction
-                movementController.ApplySkillMovementRestriction(skillType, currentState);
-
-                if (enableDebugLogs)
-                    Debug.Log($"{gameObject.name} started aiming RangedAttack");
-            }
-        }
-
-        private void CancelAim()
-        {
-            if (currentState != SkillExecutionState.Aiming) return;
+            currentSkill = SkillType.RangedAttack;
 
             if (enableDebugLogs)
-                Debug.Log($"{gameObject.name} cancelled RangedAttack aim");
+            {
+                CombatLogger.LogSkill($"{gameObject.name} started aiming RangedAttack");
+            }
 
+            // Start accuracy tracking
+            if (accuracySystem != null && combatController != null && combatController.CurrentTarget != null)
+            {
+                accuracySystem.StartAiming(combatController.CurrentTarget);
+            }
+
+            // Transition to aiming state
+            stateMachine.TransitionTo(new AimingState(this, SkillType.RangedAttack));
+        }
+
+        /// <summary>
+        /// Cancels aiming for RangedAttack skill.
+        /// </summary>
+        public void CancelAim()
+        {
+            if (currentState != SkillExecutionState.Aiming || currentSkill != SkillType.RangedAttack)
+            {
+                return; // Not aiming
+            }
+
+            if (enableDebugLogs)
+            {
+                CombatLogger.LogSkill($"{gameObject.name} cancelled RangedAttack aim");
+            }
+
+            // Stop accuracy tracking
             if (accuracySystem != null)
+            {
                 accuracySystem.StopAiming();
+            }
 
-            SetState(SkillExecutionState.Uncharged);
-            currentSkill = SkillType.Attack;
-            movementController.SetMovementModifier(1f);
+            // Cancel skill normally
+            CancelSkill();
         }
 
-        private IEnumerator ChargeSkill(SkillType skillType)
-        {
-            float chargeTime = CalculateChargeTime(skillType);
-            float elapsed = 0f;
-
-            while (elapsed < chargeTime)
-            {
-                elapsed += Time.deltaTime;
-                chargeProgress = elapsed / chargeTime;
-
-                // Check for interruption
-                if (statusEffectManager.IsKnockedDown)
-                {
-                    // Skill charging is paused during knockdown, but not reset
-                    yield return new WaitUntil(() => !statusEffectManager.IsKnockedDown);
-                }
-
-                yield return null;
-            }
-
-            // Skill fully charged
-            SetState(SkillExecutionState.Charged);
-            chargeProgress = 1f;
-
-            // Apply movement restrictions for charged state
-            movementController.ApplySkillMovementRestriction(skillType, currentState);
-
-            if (enableDebugLogs)
-            {
-                Debug.Log($"{gameObject.name} {skillType} fully charged and ready to execute");
-            }
-
-            OnSkillCharged?.Invoke(skillType);
-
-            // Auto-execute defensive skills after charging
-            if (IsDefensiveSkill(skillType))
-            {
-                ExecuteSkill(skillType);
-            }
-        }
-
-        private IEnumerator ExecuteSkillCoroutine(SkillType skillType)
-        {
-            // SPECIAL HANDLING FOR RANGED ATTACK
-            if (skillType == SkillType.RangedAttack)
-            {
-                // RangedAttack uses custom flow: Aiming → Fire → Recovery
-                yield return StartCoroutine(ExecuteRangedAttackCoroutine());
-                yield break;
-            }
-
-            // STANDARD FLOW FOR OTHER SKILLS
-            // Startup phase
-            SetState(SkillExecutionState.Startup);
-            movementController.ApplySkillMovementRestriction(skillType, currentState);
-
-            float startupTime = SpeedResolver.CalculateExecutionTime(skillType, weaponController.WeaponData, SkillExecutionState.Startup);
-            yield return new WaitForSeconds(startupTime);
-
-            // Active phase (uncancellable)
-            SetState(SkillExecutionState.Active);
-            movementController.ApplySkillMovementRestriction(skillType, currentState);
-
-            // Process skill effect during active phase
-            bool skillSuccessful = ProcessSkillExecution(skillType);
-
-            float activeTime = SpeedResolver.CalculateExecutionTime(skillType, weaponController.WeaponData, SkillExecutionState.Active);
-
-            // Handle waiting state for defensive skills
-            if (IsDefensiveSkill(skillType))
-            {
-                SetState(SkillExecutionState.Waiting);
-                movementController.ApplySkillMovementRestriction(skillType, currentState);
-
-                // Defensive skills enter waiting state
-                yield return StartCoroutine(HandleDefensiveWaitingState(skillType));
-            }
-            else
-            {
-                // Offensive skills have fixed active time
-                yield return new WaitForSeconds(activeTime);
-            }
-
-            // Recovery phase
-            SetState(SkillExecutionState.Recovery);
-            movementController.ApplySkillMovementRestriction(skillType, currentState);
-
-            float recoveryTime = SpeedResolver.CalculateExecutionTime(skillType, weaponController.WeaponData, SkillExecutionState.Recovery);
-            yield return new WaitForSeconds(recoveryTime);
-
-            // Skill complete
-            SetState(SkillExecutionState.Uncharged);
-            currentSkill = SkillType.Attack; // Reset to default
-            chargeProgress = 0f;
-
-            // Reset movement restrictions
-            movementController.SetMovementModifier(1f);
-
-            OnSkillExecuted?.Invoke(skillType, skillSuccessful);
-
-            if (enableDebugLogs)
-            {
-                Debug.Log($"{gameObject.name} {skillType} execution complete (success: {skillSuccessful})");
-            }
-        }
-
-        private IEnumerator ExecuteRangedAttackCoroutine()
-        {
-            // Validation checks
-            if (currentState != SkillExecutionState.Aiming)
-            {
-                if (enableDebugLogs)
-                    Debug.Log($"{gameObject.name} cannot fire: not aiming (state: {currentState})");
-                yield break;
-            }
-
-            if (combatController.CurrentTarget == null)
-            {
-                if (enableDebugLogs)
-                    Debug.Log($"{gameObject.name} cannot fire: target lost");
-                CancelAim();
-                yield break;
-            }
-
-            // Range check (use weapon range)
-            float weaponRange = weaponController.WeaponData != null
-                ? weaponController.WeaponData.range
-                : CombatConstants.RANGED_ATTACK_BASE_RANGE;
-
-            float distanceToTarget = Vector3.Distance(transform.position, combatController.CurrentTarget.position);
-            if (distanceToTarget > weaponRange)
-            {
-                if (enableDebugLogs)
-                    Debug.Log($"{gameObject.name} cannot fire: target out of range");
-                CancelAim();
-                yield break;
-            }
-
-            // Consume stamina
-            int staminaCost = GetSkillStaminaCost(SkillType.RangedAttack);
-            if (!staminaSystem.ConsumeStamina(staminaCost))
-            {
-                if (enableDebugLogs)
-                    Debug.Log($"{gameObject.name} insufficient stamina to fire RangedAttack");
-                CancelAim();
-                yield break;
-            }
-
-            // Enter Active state (brief, for interaction processing)
-            SetState(SkillExecutionState.Active);
-            movementController.SetMovementModifier(0f);
-
-            // Roll hit chance
-            bool isHit = accuracySystem != null ? accuracySystem.RollHitChance() : false;
-            LastRangedAttackHit = isHit; // Store for interaction manager to check
-
-            if (enableDebugLogs)
-            {
-                float accuracy = accuracySystem != null ? accuracySystem.CurrentAccuracy : 0f;
-                Debug.Log($"{gameObject.name} fired RangedAttack at {accuracy:F1}% accuracy → {(isHit ? "HIT" : "MISS")}");
-            }
-
-            // ALWAYS process through interaction manager (even on miss)
-            // This allows defensive skills to respond properly
-            CombatInteractionManager.Instance?.ProcessSkillExecution(this, SkillType.RangedAttack);
-
-            // Show visual trail based on hit/miss
-            if (isHit)
-            {
-                // HIT: Show hit trail (yellow → red)
-                DrawRangedAttackTrail(transform.position, combatController.CurrentTarget.position + Vector3.up * 1f, true);
-            }
-            else
-            {
-                // MISS: Show miss trail (yellow → gray)
-                Vector3 missPosition = accuracySystem != null
-                    ? accuracySystem.CalculateMissPosition()
-                    : combatController.CurrentTarget.position;
-
-                DrawRangedAttackTrail(transform.position, missPosition, false);
-            }
-
-            // Stop aiming
-            if (accuracySystem != null)
-                accuracySystem.StopAiming();
-
-            // Brief active time for interaction processing
-            yield return new WaitForSeconds(0.1f);
-
-            // Recovery phase
-            SetState(SkillExecutionState.Recovery);
-            movementController.SetMovementModifier(0f);
-
-            float recoveryTime = CombatConstants.RANGED_ATTACK_RECOVERY_TIME;
-
-            // Scale recovery by weapon speed (faster weapons = faster recovery)
-            if (weaponController.WeaponData != null)
-            {
-                recoveryTime = recoveryTime / weaponController.WeaponData.speed;
-            }
-
-            yield return new WaitForSeconds(recoveryTime);
-
-            // Skill complete
-            SetState(SkillExecutionState.Uncharged);
-            currentSkill = SkillType.Attack;
-            chargeProgress = 0f;
-            movementController.SetMovementModifier(1f);
-
-            OnSkillExecuted?.Invoke(SkillType.RangedAttack, isHit);
-
-            if (enableDebugLogs)
-            {
-                Debug.Log($"{gameObject.name} RangedAttack execution complete (hit: {isHit})");
-            }
-        }
-
-        private IEnumerator HandleDefensiveWaitingState(SkillType skillType)
-        {
-            // Defensive skills wait for incoming attacks or manual cancellation
-            while (currentState == SkillExecutionState.Waiting)
-            {
-                // Apply stamina drain during waiting
-                float drainRate = skillType == SkillType.Defense ?
-                    CombatConstants.DEFENSE_STAMINA_DRAIN :
-                    CombatConstants.COUNTER_STAMINA_DRAIN;
-
-                staminaSystem.DrainStamina(drainRate, Time.deltaTime);
-
-                yield return null;
-            }
-        }
-
-        private bool ProcessSkillExecution(SkillType skillType)
-        {
-            // LUNGE: Perform dash movement toward target
-            if (skillType == SkillType.Lunge)
-            {
-                if (combatController.CurrentTarget != null)
-                {
-                    Vector3 dashDirection = (combatController.CurrentTarget.position - transform.position).normalized;
-                    dashDirection.y = 0f; // Keep horizontal
-
-                    var characterController = GetComponent<CharacterController>();
-                    if (characterController != null)
-                    {
-                        Vector3 dashMovement = dashDirection * CombatConstants.LUNGE_DASH_DISTANCE;
-                        characterController.Move(dashMovement);
-
-                        if (enableDebugLogs)
-                        {
-                            Debug.Log($"{gameObject.name} lunged forward {CombatConstants.LUNGE_DASH_DISTANCE} units toward {combatController.CurrentTarget.name}");
-                        }
-                    }
-                }
-
-                // Trigger combat interaction (damage handled by CombatInteractionManager)
-                CombatInteractionManager.Instance?.ProcessSkillExecution(this, skillType);
-                return true;
-            }
-
-            // Check range for other offensive skills
-            if (SpeedResolver.IsOffensiveSkill(skillType))
-            {
-                if (combatController.CurrentTarget == null)
-                {
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"{gameObject.name} {skillType} failed: no target");
-                    }
-                    return false;
-                }
-
-                if (!weaponController.CheckRangeForSkill(combatController.CurrentTarget, skillType))
-                {
-                    if (enableDebugLogs)
-                    {
-                        Debug.Log($"{gameObject.name} {skillType} failed: target out of range");
-                    }
-                    return false;
-                }
-            }
-
-            // Trigger combat interaction system
-            CombatInteractionManager.Instance?.ProcessSkillExecution(this, skillType);
-
-            return true;
-        }
-
-        public void DrawRangedAttackTrail(Vector3 from, Vector3 to, bool wasHit)
-        {
-            var weapon = weaponController.WeaponData;
-
-            // Get weapon-specific visual properties or use defaults
-            Color startColor = Color.yellow;
-            Color endColor = wasHit ? Color.red : Color.gray;
-            float width = 0.08f;
-            string projectileType = "Projectile";
-
-            if (weapon != null && weapon.isRangedWeapon)
-            {
-                startColor = weapon.trailColorStart;
-                endColor = wasHit ? weapon.trailColorEnd : Color.gray;
-                width = weapon.trailWidth;
-                projectileType = weapon.projectileType;
-            }
-
-            // Create temporary object for trail
-            GameObject trailObj = new GameObject($"{projectileType}Trail");
-            LineRenderer line = trailObj.AddComponent<LineRenderer>();
-
-            // Configure line appearance
-            line.startWidth = width;
-            line.endWidth = width;
-            line.material = new Material(Shader.Find("Sprites/Default"));
-            line.startColor = startColor;
-            line.endColor = endColor;
-            line.positionCount = 2;
-
-            // Set positions
-            line.SetPosition(0, from + Vector3.up * 1.5f); // Shooter position
-            line.SetPosition(1, to); // Target or miss position
-
-            // Play weapon-specific sound if available
-            if (weapon != null && weapon.fireSound != null)
-            {
-                AudioSource.PlayClipAtPoint(weapon.fireSound, from);
-            }
-
-            // Fade out and destroy
-            Destroy(trailObj, CombatConstants.RANGED_ATTACK_TRAIL_DURATION);
-        }
-
-        private float CalculateChargeTime(SkillType skillType)
-        {
-            // Get base charge time per skill (Classic Mabinogi variable timing)
-            float baseChargeTime = skillType switch
-            {
-                SkillType.Attack => CombatConstants.ATTACK_CHARGE_TIME,         // 0.0s (instant)
-                SkillType.Windmill => CombatConstants.WINDMILL_CHARGE_TIME,     // 0.8s (fast)
-                SkillType.Defense => CombatConstants.DEFENSE_CHARGE_TIME,       // 1.0s (quick)
-                SkillType.Counter => CombatConstants.COUNTER_CHARGE_TIME,       // 1.0s (quick)
-                SkillType.Lunge => CombatConstants.LUNGE_CHARGE_TIME,           // 1.5s (medium)
-                SkillType.Smash => CombatConstants.SMASH_CHARGE_TIME,           // 2.0s (slow)
-                SkillType.RangedAttack => CombatConstants.RANGED_ATTACK_CHARGE_TIME, // 0.0s (uses aiming)
-                _ => CombatConstants.SMASH_CHARGE_TIME // Default fallback
-            };
-
-            // Apply dexterity modifier (faster charging with higher dex)
-            float modifiedTime = baseChargeTime / (1 + characterStats.dexterity / 10f);
-            return modifiedTime;
-        }
-
-        private int GetSkillStaminaCost(SkillType skillType)
+        /// <summary>
+        /// Returns the stamina cost for a given skill type.
+        /// </summary>
+        public int GetSkillStaminaCost(SkillType skillType)
         {
             return skillType switch
             {
@@ -1186,19 +819,10 @@ namespace FairyGate.Combat
             };
         }
 
-        private SkillType? GetSkillFromInput()
-        {
-            if (Input.GetKeyDown(attackKey)) return SkillType.Attack;
-            if (Input.GetKeyDown(defenseKey)) return SkillType.Defense;
-            if (Input.GetKeyDown(counterKey)) return SkillType.Counter;
-            if (Input.GetKeyDown(smashKey)) return SkillType.Smash;
-            if (Input.GetKeyDown(windmillKey)) return SkillType.Windmill;
-            if (Input.GetKeyDown(rangedAttackKey)) return SkillType.RangedAttack;
-            if (Input.GetKeyDown(lungeKey)) return SkillType.Lunge;
-            return null;
-        }
-
-        private KeyCode GetSkillKey(SkillType skillType)
+        /// <summary>
+        /// Returns the KeyCode for a given skill type.
+        /// </summary>
+        public KeyCode GetSkillKey(SkillType skillType)
         {
             return skillType switch
             {
@@ -1213,87 +837,103 @@ namespace FairyGate.Combat
             };
         }
 
-        private bool IsDefensiveSkill(SkillType skillType)
+        /// <summary>
+        /// Gets the skill type from keyboard input. Returns null if no skill key is pressed.
+        /// </summary>
+        private SkillType? GetSkillFromInput()
         {
-            return skillType == SkillType.Defense || skillType == SkillType.Counter;
+            if (Input.GetKeyDown(attackKey)) return SkillType.Attack;
+            if (Input.GetKeyDown(defenseKey)) return SkillType.Defense;
+            if (Input.GetKeyDown(counterKey)) return SkillType.Counter;
+            if (Input.GetKeyDown(smashKey)) return SkillType.Smash;
+            if (Input.GetKeyDown(windmillKey)) return SkillType.Windmill;
+            if (Input.GetKeyDown(rangedAttackKey)) return SkillType.RangedAttack;
+            if (Input.GetKeyDown(lungeKey)) return SkillType.Lunge;
+
+            return null;
         }
 
+        /// <summary>
+        /// Returns true if the skill type is defensive (Defense, Counter).
+        /// </summary>
+        public bool IsDefensiveSkill(SkillType skillType)
+        {
+            return SpeedResolver.IsDefensiveSkill(skillType);
+        }
+
+        /// <summary>
+        /// Returns true if the skill type is offensive.
+        /// </summary>
+        public bool IsOffensiveSkill(SkillType skillType)
+        {
+            return SpeedResolver.IsOffensiveSkill(skillType);
+        }
+
+        /// <summary>
+        /// Marks that Defense skill has blocked a hit (one-hit block system).
+        /// </summary>
+        public void MarkDefenseBlocked()
+        {
+            defenseBlockedHit = true;
+
+            if (enableDebugLogs)
+            {
+                CombatLogger.LogSkill($"{gameObject.name} Defense blocked a hit");
+            }
+        }
+
+        /// <summary>
+        /// Forces transition to Recovery state (used for interrupting skills).
+        /// </summary>
+        public void ForceTransitionToRecovery()
+        {
+            if (currentState == SkillExecutionState.Active ||
+                currentState == SkillExecutionState.Startup ||
+                currentState == SkillExecutionState.Waiting)
+            {
+                if (enableDebugLogs)
+                {
+                    CombatLogger.LogSkill($"{gameObject.name} forcing transition to Recovery state from {currentState}");
+                }
+
+                stateMachine.TransitionTo(new RecoveryState(this, currentSkill));
+            }
+        }
+
+        /// <summary>
+        /// Sets whether the character can act (used for CC effects).
+        /// </summary>
         public void SetCanAct(bool canActValue)
         {
             canAct = canActValue;
 
-            if (!canAct && currentState != SkillExecutionState.Uncharged && currentState != SkillExecutionState.Active)
-            {
-                // Cancel non-active skills when unable to act
-                CancelSkill();
-            }
-        }
-
-        public void MarkDefenseBlocked()
-        {
-            defenseBlockedHit = true;
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} Defense marked as having blocked a hit");
+                CombatLogger.LogSystem($"{gameObject.name} canAct set to {canActValue}", CombatLogger.LogLevel.Debug);
             }
         }
 
-        public void ForceTransitionToRecovery()
+        /// <summary>
+        /// Draws a ranged attack trail visual from source to target position.
+        /// </summary>
+        public void DrawRangedAttackTrail(Vector3 sourcePosition, Vector3 targetPosition, bool isHit)
         {
-            if (currentState == SkillExecutionState.Waiting)
+            if (weaponController != null)
             {
-                Debug.Log($"<color=cyan>[STATE PATTERN] ForceTransitionToRecovery called on {gameObject.name} (currently in Waiting)</color>");
-
-                // Phase 3: Use state machine if enabled
-                if (useStateMachine)
-                {
-                    // State pattern approach - transition from Waiting to Recovery
-                    // OnExit of WaitingState will handle cleanup
-                    stateMachine.TransitionTo(new RecoveryState(this, currentSkill));
-                }
-                else
-                {
-                    // Original coroutine approach
-                    SetState(SkillExecutionState.Recovery);
-                    movementController.ApplySkillMovementRestriction(currentSkill, currentState);
-                }
-            }
-            else
-            {
-                Debug.LogWarning($"<color=yellow>[STATE PATTERN] ForceTransitionToRecovery called on {gameObject.name} but not in Waiting state (current: {currentState})</color>");
+                weaponController.DrawRangedAttackTrail(sourcePosition, targetPosition, isHit);
             }
         }
 
-        // GUI Debug Display
-        private void OnGUI()
+        /// <summary>
+        /// Enables character movement (wrapper for MovementController).
+        /// </summary>
+        public void EnableMovement()
         {
-            if (showSkillGUI && Application.isPlaying)
+            if (movementController != null)
             {
-                Vector3 screenPos = Camera.main.WorldToScreenPoint(transform.position + Vector3.up * 1.5f);
-                screenPos.y = Screen.height - screenPos.y;
-
-                string skillText = $"Skill: {currentSkill}\nState: {currentState}";
-
-                // Phase 1: Show state pattern info if enabled
-                if (useStateMachine && stateMachine != null)
-                {
-                    skillText += $"\n[STATE PATTERN]\n{currentStateName}";
-                }
-
-                // Show charge progress for charging skills
-                if (currentState == SkillExecutionState.Charging || currentState == SkillExecutionState.Charged)
-                {
-                    skillText += $"\nCharge: {chargeProgress:F1}";
-                }
-
-                // Show accuracy for aiming skills
-                if (currentState == SkillExecutionState.Aiming && accuracySystem != null)
-                {
-                    skillText += $"\nAccuracy: {accuracySystem.CurrentAccuracy:F1}%";
-                }
-
-                GUI.Label(new Rect(screenPos.x - 50, screenPos.y, 100, 80), skillText);
+                movementController.SetCanMove(true);
             }
         }
     }
 }
+

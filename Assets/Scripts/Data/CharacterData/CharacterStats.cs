@@ -10,9 +10,14 @@ namespace FairyGate.Combat
         public int dexterity = 10;
         public int intelligence = 10;           // Reserved for future use
         public int focus = 10;
+        public int will = 10;                   // Knockdown resistance
         public int physicalDefense = 10;
         public int magicalDefense = 10;         // Reserved for future use
         public int vitality = 10;
+
+        [Header("Combat Modifiers")]
+        [Range(0f, 100f)]
+        public float criticalChance = 5f;       // Critical hit chance percentage (0-100%)
 
         [Header("Derived Values (Read-Only)")]
         [SerializeField] private int maxHealth = 150;
@@ -41,9 +46,11 @@ namespace FairyGate.Combat
             stats.dexterity = 10;
             stats.intelligence = 10;
             stats.focus = 10;
+            stats.will = 10;
             stats.physicalDefense = 10;
             stats.magicalDefense = 10;
             stats.vitality = 10;
+            stats.criticalChance = 5f;
             return stats;
         }
 
@@ -54,9 +61,11 @@ namespace FairyGate.Combat
             stats.dexterity = 14;
             stats.intelligence = 8;
             stats.focus = 10;
+            stats.will = 12;               // Higher knockdown resistance for player
             stats.physicalDefense = 8;
             stats.magicalDefense = 8;
             stats.vitality = 12;
+            stats.criticalChance = 8f;     // Slightly higher crit for player
             return stats;
         }
 
@@ -67,9 +76,11 @@ namespace FairyGate.Combat
             stats.dexterity = 8;
             stats.intelligence = 10;
             stats.focus = 12;
+            stats.will = 8;                // Lower knockdown resistance
             stats.physicalDefense = 12;
             stats.magicalDefense = 10;
             stats.vitality = 10;
+            stats.criticalChance = 3f;
             return stats;
         }
 
@@ -81,9 +92,11 @@ namespace FairyGate.Combat
             stats.dexterity = 10;         // Medium speed
             stats.intelligence = 8;
             stats.focus = 8;              // Low stamina
+            stats.will = 5;               // Very low knockdown resistance (glass cannon)
             stats.physicalDefense = 5;    // Glass cannon
             stats.magicalDefense = 5;
             stats.vitality = 6;           // Low HP
+            stats.criticalChance = 10f;   // High crit chance (aggressive)
             return stats;
         }
 
@@ -94,9 +107,11 @@ namespace FairyGate.Combat
             stats.dexterity = 6;          // Slow
             stats.intelligence = 10;
             stats.focus = 12;             // Good stamina for defense
+            stats.will = 18;              // Very high knockdown resistance (tank)
             stats.physicalDefense = 15;   // High defense
             stats.magicalDefense = 12;
             stats.vitality = 15;          // High HP
+            stats.criticalChance = 2f;    // Low crit (defensive build)
             return stats;
         }
 
@@ -107,9 +122,11 @@ namespace FairyGate.Combat
             stats.dexterity = 16;         // Very fast
             stats.intelligence = 10;
             stats.focus = 14;             // High stamina for mobility
+            stats.will = 7;               // Low knockdown resistance (fragile)
             stats.physicalDefense = 7;    // Low defense
             stats.magicalDefense = 8;
             stats.vitality = 8;           // Low-medium HP
+            stats.criticalChance = 15f;   // Very high crit (precision strikes)
             return stats;
         }
 
@@ -120,9 +137,11 @@ namespace FairyGate.Combat
             stats.dexterity = 10;
             stats.intelligence = 10;
             stats.focus = 10;
+            stats.will = 10;              // Balanced
             stats.physicalDefense = 10;
             stats.magicalDefense = 10;
             stats.vitality = 10;
+            stats.criticalChance = 5f;    // Balanced
             return stats;
         }
 
@@ -133,9 +152,11 @@ namespace FairyGate.Combat
             stats.dexterity = 14;         // Fast for kiting
             stats.intelligence = 10;
             stats.focus = 15;             // High accuracy/stamina
+            stats.will = 8;               // Low knockdown resistance (ranged unit)
             stats.physicalDefense = 6;    // Fragile
             stats.magicalDefense = 8;
             stats.vitality = 7;           // Low HP
+            stats.criticalChance = 12f;   // High crit (precision)
             return stats;
         }
     }

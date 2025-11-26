@@ -26,7 +26,7 @@ namespace FairyGate.Combat
             // Validate this is actually a ranged skill
             if (type != SkillType.RangedAttack)
             {
-                Debug.LogError($"AimingState created for non-ranged skill {type}!");
+                CombatLogger.LogSkill($"AimingState created for non-ranged skill {type}!", CombatLogger.LogLevel.Error);
             }
         }
 
@@ -34,7 +34,7 @@ namespace FairyGate.Combat
         {
             base.OnEnter();
 
-            Debug.Log($"<color=cyan>[STATE PATTERN] {skillSystem.gameObject.name} entered AimingState for {skillType}</color>");
+            CombatLogger.LogSkill($"<color=cyan>[STATE PATTERN] {skillSystem.gameObject.name} entered AimingState for {skillType}</color>");
 
             // Start accuracy tracking
             if (skillSystem.AccuracySystem != null)
@@ -44,7 +44,7 @@ namespace FairyGate.Combat
 
             if (skillSystem.EnableDebugLogs)
             {
-                Debug.Log($"{skillSystem.gameObject.name} started aiming {skillType}");
+                CombatLogger.LogSkill($"{skillSystem.gameObject.name} started aiming {skillType}");
             }
         }
 
@@ -58,7 +58,7 @@ namespace FairyGate.Combat
             {
                 if (skillSystem.EnableDebugLogs)
                 {
-                    Debug.Log($"{skillSystem.gameObject.name} aiming cancelled: target lost");
+                    CombatLogger.LogSkill($"{skillSystem.gameObject.name} aiming cancelled: target lost");
                 }
                 skillSystem.StateMachine.TransitionTo(new UnchargedState(skillSystem, SkillType.Attack));
                 return false;
@@ -78,10 +78,27 @@ namespace FairyGate.Combat
             {
                 if (skillSystem.EnableDebugLogs)
                 {
-                    Debug.Log($"{skillSystem.gameObject.name} aiming cancelled: target out of range ({distanceToTarget:F1} > {weaponRange})");
+                    CombatLogger.LogSkill($"{skillSystem.gameObject.name} aiming cancelled: target out of range ({distanceToTarget:F1} > {weaponRange})");
                 }
                 skillSystem.StateMachine.TransitionTo(new UnchargedState(skillSystem, SkillType.Attack));
                 return false;
+            }
+
+            // Drain stamina while aiming (punishing stamina management)
+            if (skillSystem.StaminaSystem != null)
+            {
+                skillSystem.StaminaSystem.DrainStamina(CombatConstants.RANGED_AIMING_DRAIN, deltaTime);
+
+                // Auto-cancel if stamina depleted
+                if (skillSystem.StaminaSystem.CurrentStamina <= 0)
+                {
+                    if (skillSystem.EnableDebugLogs)
+                    {
+                        CombatLogger.LogSkill($"{skillSystem.gameObject.name} aiming cancelled - stamina depleted!");
+                    }
+                    skillSystem.CancelSkill();
+                    return false;
+                }
             }
 
             return false; // No auto-transition
@@ -89,9 +106,12 @@ namespace FairyGate.Combat
 
         public override void OnExit()
         {
+            // Reset movement modifier to prevent stuck states
+            skillSystem.MovementController.SetMovementModifier(1.0f);
+
             base.OnExit();
 
-            Debug.Log($"<color=yellow>[STATE PATTERN] {skillSystem.gameObject.name} exiting AimingState</color>");
+            CombatLogger.LogSkill($"<color=yellow>[STATE PATTERN] {skillSystem.gameObject.name} exiting AimingState</color>");
 
             // NOTE: Don't call StopAiming() here - accuracy needs to persist for hit roll
             // ActiveState will call StopAiming() AFTER rolling hit chance

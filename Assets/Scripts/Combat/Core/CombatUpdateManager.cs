@@ -7,11 +7,8 @@ namespace FairyGate.Combat
     /// Centralized update manager for combat systems.
     /// Consolidates multiple Update() calls into a single managed loop for performance.
     /// </summary>
-    public class CombatUpdateManager : MonoBehaviour
+    public class CombatUpdateManager : Singleton<CombatUpdateManager>
     {
-        private static CombatUpdateManager instance;
-        public static CombatUpdateManager Instance => instance;
-
         private List<ICombatUpdatable> updatables = new List<ICombatUpdatable>(CombatConstants.COMBAT_UPDATABLES_INITIAL_CAPACITY);
         private List<ICombatFixedUpdatable> fixedUpdatables = new List<ICombatFixedUpdatable>(16);
 
@@ -19,33 +16,16 @@ namespace FairyGate.Combat
         [SerializeField] private bool enableDebugLogs = false;
         [SerializeField] private bool showUpdateStats = false;
 
-        private void Awake()
+        protected override void OnSingletonAwake()
         {
-            // Singleton pattern
-            if (instance == null)
-            {
-                instance = this;
-            }
-            else if (instance != this)
-            {
-                Destroy(gameObject);
-                return;
-            }
-
             if (enableDebugLogs)
             {
-                Debug.Log("[CombatUpdateManager] Initialized");
+                CombatLogger.LogSystem("[CombatUpdateManager] Initialized");
             }
         }
 
-        private void OnDestroy()
+        protected override void OnSingletonDestroy()
         {
-            // Clear singleton reference when destroyed (scene unload)
-            if (instance == this)
-            {
-                instance = null;
-            }
-
             // Clear all lists to prevent stale references
             if (updatables != null)
             {
@@ -58,7 +38,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log("[CombatUpdateManager] OnDestroy - Cleared all updatable lists");
+                CombatLogger.LogSystem("[CombatUpdateManager] OnDestroy - Cleared all updatable lists");
             }
         }
 
@@ -66,7 +46,7 @@ namespace FairyGate.Combat
         {
             if (instance == null)
             {
-                Debug.LogWarning($"[CombatUpdateManager] Cannot register {updatable.GetType().Name} - Instance is null! Make sure CombatUpdateManager exists in scene.");
+                CombatLogger.LogSystem($"[CombatUpdateManager] Cannot register {updatable.GetType().Name} - Instance is null! Make sure CombatUpdateManager exists in scene.", CombatLogger.LogLevel.Warning);
                 return;
             }
 
@@ -76,7 +56,7 @@ namespace FairyGate.Combat
 
                 if (instance.enableDebugLogs)
                 {
-                    Debug.Log($"[CombatUpdateManager] Registered {updatable.GetType().Name} ({instance.updatables.Count} total updatables)");
+                    CombatLogger.LogSystem($"[CombatUpdateManager] Registered {updatable.GetType().Name} ({instance.updatables.Count} total updatables)");
                 }
             }
         }
@@ -89,7 +69,7 @@ namespace FairyGate.Combat
 
                 if (instance.enableDebugLogs)
                 {
-                    Debug.Log($"[CombatUpdateManager] Unregistered {updatable.GetType().Name} ({instance.updatables.Count} remaining)");
+                    CombatLogger.LogSystem($"[CombatUpdateManager] Unregistered {updatable.GetType().Name} ({instance.updatables.Count} remaining)");
                 }
             }
         }
@@ -102,7 +82,7 @@ namespace FairyGate.Combat
 
                 if (instance.enableDebugLogs)
                 {
-                    Debug.Log($"[CombatUpdateManager] Registered fixed updatable {updatable.GetType().Name}");
+                    CombatLogger.LogSystem($"[CombatUpdateManager] Registered fixed updatable {updatable.GetType().Name}");
                 }
             }
         }
@@ -115,7 +95,7 @@ namespace FairyGate.Combat
 
                 if (instance.enableDebugLogs)
                 {
-                    Debug.Log($"[CombatUpdateManager] Unregistered fixed updatable {updatable.GetType().Name}");
+                    CombatLogger.LogSystem($"[CombatUpdateManager] Unregistered fixed updatable {updatable.GetType().Name}");
                 }
             }
         }

@@ -28,6 +28,16 @@ namespace FairyGate.Combat
         public float speed;
         public float stunDuration;
 
+        [Header("N+1 Combo System")]
+        [Tooltip("Number of basic attacks in this weapon's combo chain (N+1 window appears after last hit)")]
+        [Range(1, 5)]
+        public int comboLength = 3;
+        [Tooltip("Weapon-specific knockdown rate modifier (higher = more knockdown buildup)")]
+        [Range(0.1f, 2.0f)]
+        public float knockdownRate = 1.0f;
+        [Tooltip("Fast weapon flag for N+2 combo system (future feature)")]
+        public bool isFastWeapon = false;
+
         [Header("Deprecated - Use meleeRange/rangedRange instead")]
         [Tooltip("Legacy range value - will be removed in future update")]
         public float range;
@@ -99,6 +109,9 @@ namespace FairyGate.Combat
             sword.baseDamage = 10;
             sword.speed = 1.0f;
             sword.stunDuration = 1.0f;
+            sword.comboLength = 3;            // Standard 3-hit sword combo
+            sword.knockdownRate = 1.0f;       // Normal weapon - baseline
+            sword.isFastWeapon = false;
             sword.executionSpeedModifier = 0f;
             sword.speedResolutionModifier = 0f;
             sword.meleeTrailColor = Color.white;
@@ -125,7 +138,10 @@ namespace FairyGate.Combat
             spear.range = 1.5f;          // Legacy
             spear.baseDamage = 8;
             spear.speed = 0.8f;
-            spear.stunDuration = 0.8f;
+            spear.stunDuration = 0.8f;        // Medium stun
+            spear.comboLength = 3;            // Standard 3-hit spear combo
+            spear.knockdownRate = 1.1f;       // Slightly higher knockdown
+            spear.isFastWeapon = false;
             spear.executionSpeedModifier = 0.1f; // +10%
             spear.speedResolutionModifier = -0.1f; // -10%
             spear.meleeTrailColor = new Color(0.7f, 0.9f, 1.0f); // Light blue
@@ -152,7 +168,10 @@ namespace FairyGate.Combat
             dagger.range = 1.5f;         // Legacy
             dagger.baseDamage = 6;
             dagger.speed = 1.5f;
-            dagger.stunDuration = 0.5f;
+            dagger.stunDuration = 0.4f;       // Fast weapon - short stun (adjusted from 0.5s)
+            dagger.comboLength = 5;           // Fast weapon - 5-hit combo chain
+            dagger.knockdownRate = 0.8f;      // Lower knockdown buildup
+            dagger.isFastWeapon = true;       // Enables N+2 system (future)
             dagger.executionSpeedModifier = -0.2f; // -20%
             dagger.speedResolutionModifier = 0.2f; // +20%
             dagger.meleeTrailColor = Color.yellow;
@@ -179,7 +198,10 @@ namespace FairyGate.Combat
             mace.range = 1.5f;           // Legacy
             mace.baseDamage = 15;
             mace.speed = 0.6f;
-            mace.stunDuration = 1.5f;
+            mace.stunDuration = 1.7f;         // Slow weapon - long stun (adjusted from 1.5s)
+            mace.comboLength = 1;             // Heavy weapon - single powerful hit
+            mace.knockdownRate = 1.3f;        // Higher knockdown buildup
+            mace.isFastWeapon = false;
             mace.executionSpeedModifier = 0.3f; // +30%
             mace.speedResolutionModifier = -0.3f; // -30%
             mace.meleeTrailColor = Color.red;
@@ -208,7 +230,10 @@ namespace FairyGate.Combat
             bow.range = 6.0f;            // Legacy
             bow.baseDamage = 10;
             bow.speed = 1.0f;
-            bow.stunDuration = 0.3f;
+            bow.stunDuration = 0.3f;          // Ranged weapon - very short stun
+            bow.comboLength = 1;              // Ranged weapon - no combo chain
+            bow.knockdownRate = 0.7f;         // Low knockdown (ranged weapon)
+            bow.isFastWeapon = false;
             bow.executionSpeedModifier = 0f;
             bow.speedResolutionModifier = 0f;
             bow.meleeTrailColor = new Color(0.7f, 0.7f, 0.7f); // Light gray (emergency melee)
@@ -240,7 +265,10 @@ namespace FairyGate.Combat
             javelin.range = 4.5f;        // Legacy
             javelin.baseDamage = 14;
             javelin.speed = 0.8f; // Slower weapon = longer recovery
-            javelin.stunDuration = 1.2f;
+            javelin.stunDuration = 1.2f;      // Medium-long stun
+            javelin.comboLength = 1;          // Ranged weapon - no combo chain
+            javelin.knockdownRate = 1.2f;     // Good knockdown for heavy thrown
+            javelin.isFastWeapon = false;
             javelin.executionSpeedModifier = 0.1f;
             javelin.speedResolutionModifier = -0.15f;
             javelin.meleeTrailColor = new Color(0.55f, 0.65f, 0.75f); // Steel gray-blue (decent melee)
@@ -272,7 +300,10 @@ namespace FairyGate.Combat
             knife.range = 3.5f;          // Legacy
             knife.baseDamage = 7;
             knife.speed = 1.3f; // Fast weapon = quick recovery
-            knife.stunDuration = 0.2f;
+            knife.stunDuration = 0.25f;       // Very fast weapon - very short stun
+            knife.comboLength = 1;            // Ranged weapon - no combo chain
+            knife.knockdownRate = 0.6f;       // Very low knockdown
+            knife.isFastWeapon = true;        // Enables N+2 system (future)
             knife.executionSpeedModifier = -0.15f;
             knife.speedResolutionModifier = 0.15f;
             knife.meleeTrailColor = Color.cyan;
@@ -305,6 +336,9 @@ namespace FairyGate.Combat
             sling.baseDamage = 6;
             sling.speed = 1.1f;
             sling.stunDuration = 0.8f; // Blunt impact
+            sling.comboLength = 1;            // Ranged weapon - no combo chain
+            sling.knockdownRate = 1.0f;       // Blunt weapons have good knockdown
+            sling.isFastWeapon = false;
             sling.executionSpeedModifier = 0f;
             sling.speedResolutionModifier = 0f;
             sling.meleeTrailColor = new Color(0.5f, 0.4f, 0.3f); // Brown/tan (terrible melee)
@@ -336,7 +370,10 @@ namespace FairyGate.Combat
             axe.range = 3.0f;            // Legacy
             axe.baseDamage = 12;
             axe.speed = 0.9f;
-            axe.stunDuration = 1.0f;
+            axe.stunDuration = 1.0f;          // Normal stun
+            axe.comboLength = 1;              // Ranged weapon - no combo chain
+            axe.knockdownRate = 1.1f;         // Decent knockdown for heavy weapon
+            axe.isFastWeapon = false;
             axe.executionSpeedModifier = 0.05f;
             axe.speedResolutionModifier = -0.1f;
             axe.meleeTrailColor = new Color(0.6f, 0.1f, 0.1f); // Dark red (decent melee)

@@ -16,7 +16,7 @@ namespace FairyGate.Combat
         {
             if (weaponData == null)
             {
-                Debug.LogWarning($"WeaponTrailController on {gameObject.name}: Cannot initialize with null WeaponData");
+                CombatLogger.LogCombat($"WeaponTrailController on {gameObject.name}: Cannot initialize with null WeaponData", CombatLogger.LogLevel.Warning);
                 return;
             }
 
@@ -24,7 +24,7 @@ namespace FairyGate.Combat
 
             if (showDebugInfo)
             {
-                Debug.Log($"WeaponTrailController initialized for {weaponData.weaponName}");
+                CombatLogger.LogCombat($"WeaponTrailController initialized for {weaponData.weaponName}");
             }
         }
 
@@ -32,7 +32,7 @@ namespace FairyGate.Combat
         {
             if (currentWeaponData == null)
             {
-                Debug.LogWarning("WeaponTrailController: Cannot draw slash - weapon data not initialized");
+                CombatLogger.LogCombat("WeaponTrailController: Cannot draw slash - weapon data not initialized", CombatLogger.LogLevel.Warning);
                 return;
             }
 
@@ -68,7 +68,7 @@ namespace FairyGate.Combat
 
             if (showDebugInfo)
             {
-                Debug.Log($"WeaponTrailController: Drew {skillType} slash (duration: {duration:F2}s, range: {weaponRange:F2}, target: {(target != null ? target.name : "none")})");
+                CombatLogger.LogCombat($"WeaponTrailController: Drew {skillType} slash (duration: {duration:F2}s, range: {weaponRange:F2}, target: {(target != null ? target.name : "none")})");
             }
         }
 
@@ -179,6 +179,79 @@ namespace FairyGate.Combat
 
             line.SetPositions(positions);
             Destroy(slashObj, duration);
+        }
+
+        /// <summary>
+        /// Draws a ranged attack trail from source to target position.
+        /// Creates a visible arrow/projectile trail in the game view.
+        /// </summary>
+        /// <param name="sourcePosition">Starting position of the arrow</param>
+        /// <param name="targetPosition">Target position of the arrow</param>
+        /// <param name="weaponData">Weapon data containing trail visual properties</param>
+        /// <param name="isHit">Whether the ranged attack hit (affects color)</param>
+        public void DrawRangedTrail(Vector3 sourcePosition, Vector3 targetPosition, WeaponData weaponData, bool isHit)
+        {
+            if (weaponData == null)
+            {
+                CombatLogger.LogCombat("WeaponTrailController: Cannot draw ranged trail - weapon data is null", CombatLogger.LogLevel.Warning);
+                return;
+            }
+
+            // Create trail GameObject
+            GameObject trailObj = new GameObject("RangedAttackTrail");
+            trailObj.transform.position = Vector3.zero;
+
+            // Add and configure LineRenderer
+            LineRenderer line = trailObj.AddComponent<LineRenderer>();
+
+            // Configure visual properties
+            line.startWidth = weaponData.trailWidth;
+            line.endWidth = weaponData.trailWidth * 0.5f; // Taper toward target
+
+            // Color based on hit/miss
+            if (isHit)
+            {
+                line.startColor = weaponData.trailColorStart; // Yellow for hits
+                line.endColor = weaponData.trailColorEnd;     // Red at impact
+            }
+            else
+            {
+                // Red trail for misses
+                line.startColor = Color.red;
+                line.endColor = new Color(0.5f, 0.1f, 0.1f, 0.8f); // Darker red
+            }
+
+            // Material/Shader
+            line.material = new Material(Shader.Find("Sprites/Default"));
+
+            // Smoothness settings
+            line.numCornerVertices = 2;
+            line.numCapVertices = 2;
+
+            // Alignment - face camera for best visibility
+            line.alignment = LineAlignment.View;
+
+            // Texture mode
+            line.textureMode = LineTextureMode.Stretch;
+
+            // Shadow settings
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
+
+            // Set trail positions (straight line from source to target)
+            line.positionCount = 2;
+            Vector3[] positions = new Vector3[2];
+            positions[0] = sourcePosition;
+            positions[1] = targetPosition;
+            line.SetPositions(positions);
+
+            // Auto-destroy after 0.5 seconds
+            Destroy(trailObj, 0.5f);
+
+            if (showDebugInfo)
+            {
+                CombatLogger.LogCombat($"WeaponTrailController: Drew ranged trail ({(isHit ? "HIT" : "MISS")}) from {sourcePosition} to {targetPosition}");
+            }
         }
 
         private void ConfigureLineRenderer(LineRenderer line, int positionCount)

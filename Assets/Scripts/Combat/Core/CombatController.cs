@@ -13,6 +13,9 @@ namespace FairyGate.Combat
         [SerializeField] private Transform currentTarget;
         [SerializeField] private LayerMask enemyLayerMask = -1;
 
+        [Header("Faction")]
+        [SerializeField] private Faction faction = Faction.Enemy;
+
         [Header("Input")]
         [SerializeField] private KeyCode targetKey = KeyCode.Tab;
         [SerializeField] private KeyCode exitCombatKey = KeyCode.Escape;
@@ -61,6 +64,40 @@ namespace FairyGate.Combat
         // IStatusEffectTarget Properties
         public List<StatusEffect> ActiveStatusEffects => statusEffectManager?.ActiveStatusEffects ?? new List<StatusEffect>();
 
+        // Faction Properties
+        public Faction Faction => faction;
+
+        /// <summary>
+        /// Checks if this character is hostile to the specified faction.
+        /// </summary>
+        public bool IsHostileTo(Faction other)
+        {
+            return faction switch
+            {
+                Faction.Player => other == Faction.Enemy,
+                Faction.Enemy => other == Faction.Player || other == Faction.Ally,
+                Faction.Ally => other == Faction.Enemy,
+                Faction.Neutral => false,
+                _ => false
+            };
+        }
+
+        /// <summary>
+        /// Checks if this character is hostile to another CombatController.
+        /// </summary>
+        public bool IsHostileTo(CombatController other)
+        {
+            return other != null && IsHostileTo(other.Faction);
+        }
+
+        /// <summary>
+        /// Sets the faction for this character. Used by scene setup.
+        /// </summary>
+        public void SetFaction(Faction newFaction)
+        {
+            faction = newFaction;
+        }
+
         private void Awake()
         {
             // Get component references
@@ -74,7 +111,7 @@ namespace FairyGate.Combat
 
             if (baseStats == null)
             {
-                Debug.LogWarning($"CombatController on {gameObject.name} has no CharacterStats assigned. Using default values.");
+                CombatLogger.LogCombat($"CombatController on {gameObject.name} has no CharacterStats assigned. Using default values.", CombatLogger.LogLevel.Warning);
                 baseStats = CharacterStats.CreateDefaultStats();
             }
 
@@ -130,7 +167,7 @@ namespace FairyGate.Combat
 
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} combat state changed: {oldState} -> {newState}");
+                    CombatLogger.LogCombat($"{gameObject.name} combat state changed: {oldState} -> {newState}");
                 }
 
                 OnCombatStateChanged(oldState, newState);
@@ -208,7 +245,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} entered combat with {target.name}");
+                CombatLogger.LogCombat($"{gameObject.name} entered combat with {target.name}");
             }
         }
 
@@ -219,7 +256,7 @@ namespace FairyGate.Combat
             {
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} cannot exit combat during active skill frames");
+                    CombatLogger.LogCombat($"{gameObject.name} cannot exit combat during active skill frames");
                 }
                 return;
             }
@@ -238,18 +275,32 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} exited combat");
+                CombatLogger.LogCombat($"{gameObject.name} exited combat");
             }
         }
 
         public void SetTarget(Transform target)
         {
+            // Validate target is hostile before setting
+            if (target != null)
+            {
+                var targetCombat = target.GetComponent<CombatController>();
+                if (targetCombat != null && !IsHostileTo(targetCombat))
+                {
+                    if (enableDebugLogs)
+                    {
+                        CombatLogger.LogCombat($"{gameObject.name} rejected non-hostile target {target.name} (faction: {targetCombat.Faction})");
+                    }
+                    return; // Don't set non-hostile targets
+                }
+            }
+
             currentTarget = target;
             OnTargetChanged?.Invoke(target);
 
             if (enableDebugLogs && target != null)
             {
-                Debug.Log($"{gameObject.name} now targeting {target.name}");
+                CombatLogger.LogCombat($"{gameObject.name} now targeting {target.name}");
             }
         }
 
@@ -261,7 +312,7 @@ namespace FairyGate.Combat
             {
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} no targets available");
+                    CombatLogger.LogCombat($"{gameObject.name} no targets available");
                 }
                 return;
             }
@@ -292,13 +343,18 @@ namespace FairyGate.Combat
 
             foreach (var collider in colliders)
             {
-                if (collider.transform != transform && collider.GetComponent<CombatController>() != null)
+                if (collider.transform == transform) continue;
+
+                var targetCombatController = collider.GetComponent<CombatController>();
+                if (targetCombatController == null) continue;
+
+                // Only target hostile factions
+                if (!IsHostileTo(targetCombatController)) continue;
+
+                var targetHealth = collider.GetComponent<HealthSystem>();
+                if (targetHealth != null && targetHealth.IsAlive)
                 {
-                    var targetHealth = collider.GetComponent<HealthSystem>();
-                    if (targetHealth != null && targetHealth.IsAlive)
-                    {
-                        cachedTargetsList.Add(collider.transform);
-                    }
+                    cachedTargetsList.Add(collider.transform);
                 }
             }
 
@@ -389,19 +445,19 @@ namespace FairyGate.Combat
         private void ValidateComponents()
         {
             if (healthSystem == null)
-                Debug.LogError($"{gameObject.name} CombatController requires HealthSystem component");
+                CombatLogger.LogCombat($"{gameObject.name} CombatController requires HealthSystem component", CombatLogger.LogLevel.Error);
 
             if (weaponController == null)
-                Debug.LogError($"{gameObject.name} CombatController requires WeaponController component");
+                CombatLogger.LogCombat($"{gameObject.name} CombatController requires WeaponController component", CombatLogger.LogLevel.Error);
 
             if (skillSystem == null)
-                Debug.LogError($"{gameObject.name} CombatController requires SkillSystem component");
+                CombatLogger.LogCombat($"{gameObject.name} CombatController requires SkillSystem component", CombatLogger.LogLevel.Error);
 
             if (statusEffectManager == null)
-                Debug.LogError($"{gameObject.name} CombatController requires StatusEffectManager component");
+                CombatLogger.LogCombat($"{gameObject.name} CombatController requires StatusEffectManager component", CombatLogger.LogLevel.Error);
 
             if (staminaSystem == null)
-                Debug.LogError($"{gameObject.name} CombatController requires StaminaSystem component");
+                CombatLogger.LogCombat($"{gameObject.name} CombatController requires StaminaSystem component", CombatLogger.LogLevel.Error);
         }
 
         // GUI Debug Display

@@ -53,7 +53,7 @@ namespace FairyGate.Combat
 
             if (characterStats == null)
             {
-                Debug.LogWarning($"HealthSystem on {gameObject.name} has no CharacterStats assigned. Using default values.");
+                CombatLogger.LogCombat($"HealthSystem on {gameObject.name} has no CharacterStats assigned. Using default values.", CombatLogger.LogLevel.Warning);
                 characterStats = CharacterStats.CreateDefaultStats();
             }
 
@@ -77,7 +77,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} took {damage} damage from {(source ? source.name : "unknown")} ({currentHealth}/{MaxHealth})");
+                CombatLogger.LogCombat($"{gameObject.name} took {damage} damage from {(source ? source.name : "unknown")} ({currentHealth}/{MaxHealth})");
             }
 
             OnDamageReceived?.Invoke(damage, source);
@@ -104,7 +104,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} has died!");
+                CombatLogger.LogCombat($"{gameObject.name} has died!");
             }
 
             // Clear all status effects
@@ -137,7 +137,7 @@ namespace FairyGate.Combat
             {
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"{gameObject.name} healed for {currentHealth - oldHealth} ({currentHealth}/{MaxHealth})");
+                    CombatLogger.LogCombat($"{gameObject.name} healed for {currentHealth - oldHealth} ({currentHealth}/{MaxHealth})");
                 }
 
                 OnHealthChanged?.Invoke(currentHealth, MaxHealth);
@@ -164,7 +164,7 @@ namespace FairyGate.Combat
         {
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} taking {reflectedDamage} reflected damage");
+                CombatLogger.LogCombat($"{gameObject.name} taking {reflectedDamage} reflected damage");
             }
 
             TakeDamage(reflectedDamage, originalAttacker);
@@ -182,7 +182,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"{gameObject.name} health reset for testing");
+                CombatLogger.LogCombat($"{gameObject.name} health reset for testing");
             }
         }
 

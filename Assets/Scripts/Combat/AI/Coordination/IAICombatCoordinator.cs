@@ -11,31 +11,31 @@ namespace FairyGate.Combat
         /// <summary>
         /// Requests permission to attack. Returns true if granted.
         /// </summary>
-        bool RequestAttackPermission(SimpleTestAI requester);
+        bool RequestAttackPermission(IAIAgent requester);
 
         /// <summary>
         /// Releases attack slot when attack completes.
         /// </summary>
-        void ReleaseAttackSlot(SimpleTestAI attacker);
+        void ReleaseAttackSlot(IAIAgent attacker);
 
         /// <summary>
         /// Requests a formation slot position. Returns null if unavailable.
         /// </summary>
-        Vector3? RequestFormationSlot(SimpleTestAI requester, float desiredDistance);
+        Vector3? RequestFormationSlot(IAIAgent requester, float desiredDistance);
 
         /// <summary>
         /// Releases formation slot when leaving combat or dying.
         /// </summary>
-        void ReleaseFormationSlot(SimpleTestAI enemy);
+        void ReleaseFormationSlot(IAIAgent enemy);
 
         /// <summary>
         /// Registers an AI enemy when it becomes active.
         /// </summary>
-        void RegisterEnemy(SimpleTestAI enemy);
+        void RegisterEnemy(IAIAgent enemy);
 
         /// <summary>
         /// Unregisters an AI enemy when it dies or exits combat.
         /// </summary>
-        void UnregisterEnemy(SimpleTestAI enemy);
+        void UnregisterEnemy(IAIAgent enemy);
     }
 }

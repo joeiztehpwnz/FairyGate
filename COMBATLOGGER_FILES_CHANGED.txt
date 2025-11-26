@@ -1,0 +1,86 @@
+CombatLogger API Hotfix - Files Changed
+========================================
+
+Total Files Modified: 43 files
+Total Fixes Applied: 324 fixes
+
+FILES CHANGED (Alphabetically):
+--------------------------------
+
+AI Systems:
+  /home/joe/FairyGate/Assets/Scripts/Combat/AI/AICoordinator.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/AI/Coordination/AttackCoordinator.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/AI/Coordination/FormationManager.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/AI/Patterns/Editor/PatternGenerator.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/AI/Patterns/PatternCombatHandler.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/AI/Patterns/PatternCondition.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/AI/Patterns/PatternDefinition.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/AI/Patterns/PatternMovementController.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/AI/Patterns/PatternNode.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/AI/Patterns/PatternWeaponManager.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/AI/Patterns/TelegraphSystem.cs
+
+Core Systems:
+  /home/joe/FairyGate/Assets/Scripts/Combat/Core/CombatController.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Core/CombatInteractionManager.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Core/CombatStateValidator.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Core/CombatUpdateManager.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Core/GameManager.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Core/MovementArbitrator.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Core/MovementController.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Core/SkillExecutionTracker.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Core/SkillInteractionResolver.cs
+
+Equipment:
+  /home/joe/FairyGate/Assets/Scripts/Combat/Equipment/EquipmentManager.cs
+
+Skills:
+  /home/joe/FairyGate/Assets/Scripts/Combat/Skills/States/ActiveState.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Skills/States/AimingState.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Skills/States/ApproachingState.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Skills/States/ChargedState.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Skills/States/ChargingState.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Skills/States/RecoveryState.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Skills/States/SkillStateBase.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Skills/States/SkillStateMachine.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Skills/States/StartupState.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Skills/States/WaitingState.cs
+
+Status Effects:
+  /home/joe/FairyGate/Assets/Scripts/Combat/StatusEffects/StatusEffectManager.cs
+
+Systems:
+  /home/joe/FairyGate/Assets/Scripts/Combat/Systems/AccuracySystem.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Systems/CameraController.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Systems/HealthSystem.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Systems/KnockdownMeterTracker.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Systems/StaminaSystem.cs
+
+UI:
+  /home/joe/FairyGate/Assets/Scripts/Combat/UI/OutlineEffect.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/UI/SkillIconDisplay.cs
+
+Weapons:
+  /home/joe/FairyGate/Assets/Scripts/Combat/Weapons/WeaponController.cs
+  /home/joe/FairyGate/Assets/Scripts/Combat/Weapons/WeaponTrailController.cs
+
+PATTERN CHANGES:
+----------------
+✅ CombatLogger.Log(CombatLogger.Category.X, message)
+   → CombatLogger.Log(message, CombatLogger.LogCategory.X, CombatLogger.LogLevel.Info)
+
+✅ CombatLogger.LogWarning(CombatLogger.Category.X, message)
+   → CombatLogger.Log(message, CombatLogger.LogCategory.X, CombatLogger.LogLevel.Warning)
+
+✅ CombatLogger.LogError(CombatLogger.Category.X, message)
+   → CombatLogger.Log(message, CombatLogger.LogCategory.X, CombatLogger.LogLevel.Error)
+
+VERIFICATION:
+-------------
+❌ → ✅ CombatLogger.Category.* references: 0 (was 265)
+❌ → ✅ CombatLogger.LogWarning calls: 0 (was 39)
+❌ → ✅ CombatLogger.LogError calls: 0 (was 20)
+✅ CombatLogger.Log(...) calls: 265 (correct)
+✅ Convenience method calls: 21 (preserved)
+
+STATUS: ✅ COMPLETE - Ready for compilation

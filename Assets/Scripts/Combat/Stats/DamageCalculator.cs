@@ -34,9 +34,39 @@ namespace FairyGate.Combat
             return Mathf.Max(Mathf.RoundToInt(finalDamage), CombatConstants.MINIMUM_DAMAGE);
         }
 
+        // Critical Hit System
+        public static bool RollCriticalHit(CharacterStats attackerStats)
+        {
+            float roll = Random.Range(0f, 100f);
+            return roll < attackerStats.criticalChance;
+        }
+
+        public static int CalculateCriticalDamage(int baseDamage, float criticalMultiplier = 1.5f)
+        {
+            return Mathf.RoundToInt(baseDamage * criticalMultiplier);
+        }
+
+        public static float CalculateCriticalStunMultiplier()
+        {
+            return CombatConstants.CRITICAL_STUN_MULTIPLIER;
+        }
+
         public static float CalculateStunDuration(float baseStunDuration, CharacterStats targetStats)
         {
             return baseStunDuration * (1 - targetStats.focus / CombatConstants.FOCUS_STUN_RESISTANCE_DIVISOR);
+        }
+
+        public static float CalculateStunDuration(float baseStunDuration, CharacterStats targetStats, bool wasCriticalHit)
+        {
+            float stunDuration = baseStunDuration * (1 - targetStats.focus / CombatConstants.FOCUS_STUN_RESISTANCE_DIVISOR);
+
+            // Apply critical hit stun multiplier
+            if (wasCriticalHit)
+            {
+                stunDuration *= CombatConstants.CRITICAL_STUN_MULTIPLIER;
+            }
+
+            return stunDuration;
         }
 
         public static float CalculateKnockdownDuration(CharacterStats targetStats)
@@ -48,6 +78,24 @@ namespace FairyGate.Combat
         {
             float buildup = CombatConstants.ATTACK_KNOCKDOWN_BUILDUP + (attackerStats.strength / CombatConstants.STRENGTH_KNOCKDOWN_DIVISOR);
             buildup -= (defenderStats.focus / CombatConstants.FOCUS_STATUS_RECOVERY_DIVISOR);
+            return Mathf.Max(Mathf.RoundToInt(buildup), 1);
+        }
+
+        public static int CalculateKnockdownMeterBuildup(CharacterStats attackerStats, CharacterStats defenderStats, float weaponKnockdownRate)
+        {
+            // Base knockdown buildup
+            float buildup = CombatConstants.ATTACK_KNOCKDOWN_BUILDUP + (attackerStats.strength / CombatConstants.STRENGTH_KNOCKDOWN_DIVISOR);
+
+            // Apply weapon knockdown rate modifier
+            buildup *= weaponKnockdownRate;
+
+            // Apply Will resistance (defender stat)
+            float willResistance = defenderStats.will / 30f;  // 0-1 range
+            buildup *= (1f - willResistance);
+
+            // Subtract Focus resistance (legacy)
+            buildup -= (defenderStats.focus / CombatConstants.FOCUS_STATUS_RECOVERY_DIVISOR);
+
             return Mathf.Max(Mathf.RoundToInt(buildup), 1);
         }
 

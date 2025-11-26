@@ -46,7 +46,7 @@ namespace FairyGate.Combat
         {
             if (nodes == null || nodes.Count == 0)
             {
-                Debug.LogWarning($"[PatternDefinition] '{patternName}' has no nodes defined!");
+                CombatLogger.LogPattern($"[PatternDefinition] '{patternName}' has no nodes defined!", CombatLogger.LogLevel.Warning);
                 return null;
             }
 
@@ -58,7 +58,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.LogWarning($"[PatternDefinition] Node '{nodeName}' not found in pattern '{patternName}'");
+                CombatLogger.LogPattern($"[PatternDefinition] Node '{nodeName}' not found in pattern '{patternName}'", CombatLogger.LogLevel.Warning);
             }
 
             return null;
@@ -76,7 +76,7 @@ namespace FairyGate.Combat
                 // Fallback: Use first node if starting node not found
                 if (nodes != null && nodes.Count > 0)
                 {
-                    Debug.LogWarning($"[PatternDefinition] Starting node '{startingNodeName}' not found in '{patternName}'. Using first node '{nodes[0].nodeName}' as fallback.");
+                    CombatLogger.LogPattern($"[PatternDefinition] Starting node '{startingNodeName}' not found in '{patternName}'. Using first node '{nodes[0].nodeName}' as fallback.", CombatLogger.LogLevel.Warning);
                     return nodes[0];
                 }
             }
@@ -188,13 +188,13 @@ namespace FairyGate.Combat
                 // Pattern is valid
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"[PatternDefinition] '{patternName}' validated successfully ({nodes?.Count ?? 0} nodes)");
+                    CombatLogger.LogPattern($"[PatternDefinition] '{patternName}' validated successfully ({nodes?.Count ?? 0} nodes)");
                 }
             }
             else
             {
                 // Pattern has errors
-                Debug.LogError($"[PatternDefinition] '{patternName}' validation failed: {error}", this);
+                CombatLogger.LogPattern($"[PatternDefinition] '{patternName}' validation failed: {error}", CombatLogger.LogLevel.Error, this);
             }
         }
 
@@ -263,7 +263,7 @@ namespace FairyGate.Combat
                 }
             }
 
-            Debug.Log(sb.ToString(), this);
+            CombatLogger.LogPattern(sb.ToString(), CombatLogger.LogLevel.Info, this);
         }
         #endif
     }

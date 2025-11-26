@@ -43,6 +43,9 @@ namespace FairyGate.Combat
 
         public override void OnExit()
         {
+            // Reset movement modifier to prevent stuck states
+            skillSystem.MovementController.SetMovementModifier(1.0f);
+
             base.OnExit();
             // Minimal cleanup needed - just transitioning to active state
         }

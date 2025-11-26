@@ -243,7 +243,7 @@ namespace FairyGate.Combat
             pattern.startingNodeName = "Observe";
 
             SavePattern(pattern, "GuardianPattern");
-            Debug.Log("[PatternGenerator] Guardian pattern generated successfully!");
+            CombatLogger.LogPattern("[PatternGenerator] Guardian pattern generated successfully!");
         }
 
         private static void GenerateBerserkerPattern()
@@ -365,7 +365,7 @@ namespace FairyGate.Combat
             pattern.startingNodeName = "Aggressive Approach";
 
             SavePattern(pattern, "BerserkerPattern");
-            Debug.Log("[PatternGenerator] Berserker pattern generated successfully!");
+            CombatLogger.LogPattern("[PatternGenerator] Berserker pattern generated successfully!");
         }
 
         // Helper Methods
@@ -417,19 +417,21 @@ namespace FairyGate.Combat
         private static void GenerateAssassinPattern()
         {
             // TODO: Implement Assassin pattern (Counter-focused, opportunistic)
-            Debug.Log("[PatternGenerator] Assassin pattern generation not yet implemented.");
+            CombatLogger.LogPattern("[PatternGenerator] Assassin pattern generation not yet implemented.");
         }
 
         private static void GenerateArcherPattern()
         {
-            // TODO: Implement Archer pattern (Ranged kiter)
-            Debug.Log("[PatternGenerator] Archer pattern generation not yet implemented.");
+            // NOTE: Archer pattern is implemented via ArcherPattern.asset
+            // This generator stub is kept for potential future procedural generation
+            CombatLogger.LogPattern("[PatternGenerator] Archer pattern exists as asset - see Assets/Data/AI/Patterns/ArcherPattern.asset");
         }
 
         private static void GenerateSoldierPattern()
         {
-            // TODO: Implement Soldier pattern (Balanced fighter)
-            Debug.Log("[PatternGenerator] Soldier pattern generation not yet implemented.");
+            // NOTE: Soldier pattern is implemented via SoldierPattern.asset
+            // This generator stub is kept for potential future procedural generation
+            CombatLogger.LogPattern("[PatternGenerator] Soldier pattern exists as asset - see Assets/Data/AI/Patterns/SoldierPattern.asset");
         }
     }
 }

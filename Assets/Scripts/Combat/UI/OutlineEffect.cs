@@ -24,7 +24,7 @@ namespace FairyGate.Combat
 
             if (meshFilters.Length == 0)
             {
-                Debug.LogWarning($"OutlineEffect on {gameObject.name} found no MeshFilters. Outline will not render.");
+                CombatLogger.LogUI($"OutlineEffect on {gameObject.name} found no MeshFilters. Outline will not render.", CombatLogger.LogLevel.Warning);
                 return;
             }
 
@@ -37,7 +37,7 @@ namespace FairyGate.Combat
             Shader shader = Shader.Find("Custom/OutlineShader");
             if (shader == null)
             {
-                Debug.LogError($"OutlineEffect on {gameObject.name}: Custom/OutlineShader not found! Outline will not work correctly.");
+                CombatLogger.LogUI($"OutlineEffect on {gameObject.name}: Custom/OutlineShader not found! Outline will not work correctly.", CombatLogger.LogLevel.Error);
                 return;
             }
 

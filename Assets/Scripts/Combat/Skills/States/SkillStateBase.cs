@@ -35,7 +35,7 @@ namespace FairyGate.Combat
 
             if (skillSystem.EnableDebugLogs)
             {
-                Debug.Log($"{skillSystem.gameObject.name} entered {GetType().Name} for {skillType}");
+                CombatLogger.LogSkill($"{skillSystem.gameObject.name} entered {GetType().Name} for {skillType}");
             }
         }
 
@@ -53,7 +53,7 @@ namespace FairyGate.Combat
         {
             if (skillSystem.EnableDebugLogs)
             {
-                Debug.Log($"{skillSystem.gameObject.name} exiting {GetType().Name}");
+                CombatLogger.LogSkill($"{skillSystem.gameObject.name} exiting {GetType().Name}");
             }
         }
 

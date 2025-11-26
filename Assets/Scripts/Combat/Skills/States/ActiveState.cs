@@ -53,11 +53,11 @@ namespace FairyGate.Combat
             {
                 if (IsDefensiveSkill())
                 {
-                    Debug.Log($"{skillSystem.gameObject.name} {skillType} activated - entering Waiting state");
+                    CombatLogger.LogSkill($"{skillSystem.gameObject.name} {skillType} activated - entering Waiting state");
                 }
                 else
                 {
-                    Debug.Log($"{skillSystem.gameObject.name} {skillType} active (duration: {activeTime:F2}s, success: {skillSuccessful})");
+                    CombatLogger.LogSkill($"{skillSystem.gameObject.name} {skillType} active (duration: {activeTime:F2}s, success: {skillSuccessful})");
                 }
             }
         }
@@ -83,6 +83,9 @@ namespace FairyGate.Combat
 
         public override void OnExit()
         {
+            // Reset movement modifier to prevent stuck states
+            skillSystem.MovementController.SetMovementModifier(1.0f);
+
             base.OnExit();
         }
 
@@ -122,7 +125,7 @@ namespace FairyGate.Combat
                 if (skillSystem.EnableDebugLogs)
                 {
                     float accuracy = skillSystem.AccuracySystem != null ? skillSystem.AccuracySystem.CurrentAccuracy : 0f;
-                    Debug.Log($"{skillSystem.gameObject.name} fired RangedAttack at {accuracy:F1}% accuracy → {(isHit ? "HIT" : "MISS")}");
+                    CombatLogger.LogSkill($"{skillSystem.gameObject.name} fired RangedAttack at {accuracy:F1}% accuracy → {(isHit ? "HIT" : "MISS")}");
                 }
 
                 // Stop accuracy tracking AFTER hit roll (fixes state machine timing bug)
@@ -173,7 +176,7 @@ namespace FairyGate.Combat
 
                         if (skillSystem.EnableDebugLogs)
                         {
-                            Debug.Log($"{skillSystem.gameObject.name} lunged forward {CombatConstants.LUNGE_DASH_DISTANCE} units toward {skillSystem.CombatController.CurrentTarget.name}");
+                            CombatLogger.LogSkill($"{skillSystem.gameObject.name} lunged forward {CombatConstants.LUNGE_DASH_DISTANCE} units toward {skillSystem.CombatController.CurrentTarget.name}");
                         }
                     }
                 }
@@ -190,7 +193,7 @@ namespace FairyGate.Combat
                 {
                     if (skillSystem.EnableDebugLogs)
                     {
-                        Debug.Log($"{skillSystem.gameObject.name} {skillType} failed: no target");
+                        CombatLogger.LogSkill($"{skillSystem.gameObject.name} {skillType} failed: no target");
                     }
                     return false;
                 }
@@ -199,7 +202,7 @@ namespace FairyGate.Combat
                 {
                     if (skillSystem.EnableDebugLogs)
                     {
-                        Debug.Log($"{skillSystem.gameObject.name} {skillType} failed: target out of range");
+                        CombatLogger.LogSkill($"{skillSystem.gameObject.name} {skillType} failed: target out of range");
                     }
                     return false;
                 }

@@ -32,11 +32,11 @@ namespace FairyGate.Combat
             {
                 if (IsDefensiveSkill())
                 {
-                    Debug.Log($"{skillSystem.gameObject.name} {skillType} charged - auto-executing");
+                    CombatLogger.LogSkill($"{skillSystem.gameObject.name} {skillType} charged - auto-executing");
                 }
                 else
                 {
-                    Debug.Log($"{skillSystem.gameObject.name} {skillType} charged - waiting for execute input");
+                    CombatLogger.LogSkill($"{skillSystem.gameObject.name} {skillType} charged - waiting for execute input");
                 }
             }
         }
@@ -57,6 +57,9 @@ namespace FairyGate.Combat
 
         public override void OnExit()
         {
+            // Reset movement modifier to prevent stuck states
+            skillSystem.MovementController.SetMovementModifier(1.0f);
+
             base.OnExit();
         }
 

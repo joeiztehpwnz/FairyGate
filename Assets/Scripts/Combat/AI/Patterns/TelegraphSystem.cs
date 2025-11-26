@@ -77,7 +77,7 @@ namespace FairyGate.Combat
             {
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"[TelegraphSystem] {gameObject.name} - No telegraph data for {upcomingSkill}");
+                    CombatLogger.LogPattern($"[TelegraphSystem] {gameObject.name} - No telegraph data for {upcomingSkill}");
                 }
                 return;
             }
@@ -113,7 +113,7 @@ namespace FairyGate.Combat
 
             if (enableDebugLogs)
             {
-                Debug.Log($"[TelegraphSystem] {gameObject.name} telegraphing {skill} ({data.visualType}) for {data.duration}s");
+                CombatLogger.LogPattern($"[TelegraphSystem] {gameObject.name} telegraphing {skill} ({data.visualType}) for {data.duration}s");
             }
 
             // Play audio telegraph
@@ -148,14 +148,14 @@ namespace FairyGate.Combat
 
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"[TelegraphSystem] {gameObject.name} playing audio telegraph: {data.audioClip}");
+                    CombatLogger.LogPattern($"[TelegraphSystem] {gameObject.name} playing audio telegraph: {data.audioClip}");
                 }
             }
             else
             {
                 if (enableDebugLogs)
                 {
-                    Debug.LogWarning($"[TelegraphSystem] {gameObject.name} failed to load audio clip: {data.audioClip}");
+                    CombatLogger.LogPattern($"[TelegraphSystem] {gameObject.name} failed to load audio clip: {data.audioClip}", CombatLogger.LogLevel.Warning);
                 }
             }
         }
@@ -201,7 +201,7 @@ namespace FairyGate.Combat
                     break;
 
                 default:
-                    Debug.LogWarning($"[TelegraphSystem] Unknown telegraph visual type: {data.visualType}");
+                    CombatLogger.LogPattern($"[TelegraphSystem] Unknown telegraph visual type: {data.visualType}", CombatLogger.LogLevel.Warning);
                     break;
             }
         }
@@ -271,7 +271,7 @@ namespace FairyGate.Combat
 
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"[TelegraphSystem] {gameObject.name} displaying eye glow: {glowColor}");
+                    CombatLogger.LogPattern($"[TelegraphSystem] {gameObject.name} displaying eye glow: {glowColor}");
                 }
             }
         }
@@ -328,7 +328,7 @@ namespace FairyGate.Combat
 
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"[TelegraphSystem] {gameObject.name} displaying particle effect");
+                    CombatLogger.LogPattern($"[TelegraphSystem] {gameObject.name} displaying particle effect");
                 }
             }
         }

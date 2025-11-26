@@ -21,13 +21,16 @@ MonoBehaviour:
   baseDamage: 8
   speed: 0.8
   stunDuration: 0.8
+  comboLength: 3
+  knockdownRate: 1.1
+  isFastWeapon: 0
   range: 1.5
   executionSpeedModifier: 0.1
   speedResolutionModifier: -0.1
   weaponPrefab: {fileID: 0}
   weaponIcon: {fileID: 0}
   hitSounds: []
-  description: Balanced stats with moderate damage/speed - can throw (classic: no
+  description: Balanced stats with moderate damage/speed - can throw (classic no
     range advantage)
   meleeTrailColor: {r: 0.7, g: 0.9, b: 1, a: 1}
   meleeTrailWidth: 0.25

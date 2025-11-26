@@ -78,7 +78,15 @@ namespace FairyGate.Combat
 
                 // Timing
                 case ConditionType.TimeElapsed:
-                    return context.timeInCurrentNode >= floatValue;
+                    {
+                        bool result = context.timeInCurrentNode >= floatValue;
+                        // Debug: Log TimeElapsed check failures - commented out to reduce spam
+                        // if (!result && context.timeInCurrentNode > 0.5f)
+                        // {
+                        //     UnityEngine.CombatLogger.LogAI($"[PatternCondition] TimeElapsed check failed: {context.timeInCurrentNode:F3}s < {floatValue:F3}s threshold");
+                        // }
+                        return result;
+                    }
 
                 case ConditionType.CooldownExpired:
                     // intValue represents cooldown ID
@@ -90,8 +98,31 @@ namespace FairyGate.Combat
                     // This prevents random flipping every frame
                     return context.randomValue < floatValue;
 
+                case ConditionType.SkillCharged:
+                    // Check if specified skill is charged and ready to execute
+                    // For ranged attacks, this means Aiming state (not Charged)
+                    // For melee skills, this means Charged state
+                    if (context.skillSystem != null)
+                    {
+                        bool isCorrectSkill = context.skillSystem.CurrentSkill == skillValue;
+                        bool isCharged = context.skillSystem.CurrentState == SkillExecutionState.Charged;
+                        bool isAiming = context.skillSystem.CurrentState == SkillExecutionState.Aiming;
+
+                        return isCorrectSkill && (isCharged || isAiming);
+                    }
+                    return false;
+
+                case ConditionType.SelfSkillState:
+                    // Check if AI is in a specific skill execution state
+                    // Use intValue to represent the SkillExecutionState enum value
+                    return context.selfSkillState == (SkillExecutionState)intValue;
+
+                case ConditionType.LastSkillSuccessful:
+                    // Check if last skill execution was successful
+                    return context.lastSkillSuccessful == boolValue;
+
                 default:
-                    Debug.LogWarning($"[PatternCondition] Unknown condition type: {type}");
+                    CombatLogger.LogPattern($"[PatternCondition] Unknown condition type: {type}", CombatLogger.LogLevel.Warning);
                     return false;
             }
         }
@@ -130,7 +161,12 @@ namespace FairyGate.Combat
         RandomChance,       // X% probability
 
         // Self combat state (added at end to avoid breaking existing patterns)
-        SelfCombatState     // Self in specific state (knockback, knockdown, stun, etc)
+        SelfCombatState,    // Self in specific state (knockback, knockdown, stun, etc)
+
+        // Skill state
+        SkillCharged,       // Specific skill is fully charged and ready to execute
+        SelfSkillState,     // AI is in specific skill execution state (use intValue for SkillExecutionState enum)
+        LastSkillSuccessful // Last skill execution succeeded (use boolValue)
     }
 
     /// <summary>
@@ -147,6 +183,12 @@ namespace FairyGate.Combat
         public float timeInCurrentNode;
         public float randomValue; // Random value rolled once per node entry (0-1)
         public CombatState selfCombatState;
+
+        // Self skill state
+        public SkillExecutionState selfSkillState;
+        public bool isCharging;
+        public bool isExecuting;
+        public bool lastSkillSuccessful;
 
         // Player state
         public bool isPlayerCharging;

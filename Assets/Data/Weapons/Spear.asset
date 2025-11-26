@@ -14,13 +14,34 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   weaponName: 
   weaponType: 0
-  range: 5
+  meleeRange: 0
+  rangedRange: 0
+  meleeDamageMultiplier: 1
+  rangedDamageMultiplier: 1
   baseDamage: 5
   speed: 10
-  stunDuration: 1
+  stunDuration: 0.8
+  comboLength: 3
+  knockdownRate: 1.1
+  isFastWeapon: 0
+  range: 5
   executionSpeedModifier: 0
   speedResolutionModifier: 0
   weaponPrefab: {fileID: 0}
   weaponIcon: {fileID: 0}
   hitSounds: []
   description: 
+  meleeTrailColor: {r: 1, g: 1, b: 1, a: 1}
+  meleeTrailWidth: 0.15
+  meleeTrailTime: 0.3
+  meleeTrailStartWidthMultiplier: 1
+  meleeTrailEndWidthMultiplier: 1
+  meleeTrailEndColor: {r: 1, g: 1, b: 1, a: 1}
+  meleeTrailCornerVertices: 3
+  meleeTrailEndCapVertices: 3
+  isRangedWeapon: 0
+  projectileType: Arrow
+  trailColorStart: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  trailColorEnd: {r: 1, g: 0, b: 0, a: 1}
+  trailWidth: 0.08
+  fireSound: {fileID: 0}

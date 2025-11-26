@@ -37,7 +37,7 @@ namespace FairyGate.Combat
 
             if (playerTarget == null)
             {
-                Debug.LogError("CameraController: No player target found! Camera will not follow.");
+                CombatLogger.LogSystem("CameraController: No player target found! Camera will not follow.", CombatLogger.LogLevel.Error);
             }
         }
 
@@ -101,7 +101,7 @@ namespace FairyGate.Combat
             if (playerObj != null)
             {
                 playerTarget = playerObj.transform;
-                Debug.Log($"CameraController: Found player by tag '{playerObj.name}'");
+                CombatLogger.LogSystem($"CameraController: Found player by tag '{playerObj.name}'");
                 return;
             }
 
@@ -110,7 +110,7 @@ namespace FairyGate.Combat
             if (playerObj != null)
             {
                 playerTarget = playerObj.transform;
-                Debug.Log($"CameraController: Found player by name '{playerObj.name}'");
+                CombatLogger.LogSystem($"CameraController: Found player by name '{playerObj.name}'");
                 return;
             }
 
@@ -119,11 +119,11 @@ namespace FairyGate.Combat
             if (combatController != null)
             {
                 playerTarget = combatController.transform;
-                Debug.Log($"CameraController: Found player by CombatController '{combatController.name}' (assumed first is player)");
+                CombatLogger.LogSystem($"CameraController: Found player by CombatController '{combatController.name}' (assumed first is player)");
                 return;
             }
 
-            Debug.LogWarning("CameraController: Could not auto-find player. Please assign manually.");
+            CombatLogger.LogSystem("CameraController: Could not auto-find player. Please assign manually.", CombatLogger.LogLevel.Warning);
         }
 
         private void OnGUI()

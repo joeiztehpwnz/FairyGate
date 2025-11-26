@@ -29,6 +29,7 @@ namespace FairyGate.Combat
         Uncharged,      // Skill ready to be charged
         Charging,       // Skill charging (2 seconds base)
         Charged,        // Skill ready to execute
+        Approaching,    // Auto-moving to target when executing out of range
         Aiming,         // RangedAttack aiming state
         Startup,        // Skill startup frames
         Active,         // Skill active frames (uncancellable)
@@ -97,5 +98,13 @@ namespace FairyGate.Combat
         Close,      // Prefer this weapon at close range
         Far,        // Prefer this weapon at long range
         Either      // No range preference for this weapon
+    }
+
+    public enum Faction
+    {
+        Player,     // Player-controlled characters
+        Enemy,      // AI enemies hostile to player
+        Ally,       // AI allies friendly to player (future)
+        Neutral     // Non-combatants (future)
     }
 }

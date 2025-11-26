@@ -14,16 +14,31 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   weaponName: Bow
   weaponType: 4
-  range: 6
+  meleeRange: 0
+  rangedRange: 0
+  meleeDamageMultiplier: 1
+  rangedDamageMultiplier: 1
   baseDamage: 10
   speed: 1
   stunDuration: 0.3
+  comboLength: 1
+  knockdownRate: 0.7
+  isFastWeapon: 0
+  range: 6
   executionSpeedModifier: 0
   speedResolutionModifier: 0
   weaponPrefab: {fileID: 0}
   weaponIcon: {fileID: 0}
   hitSounds: []
   description: Standard ranged weapon with good range and accuracy
+  meleeTrailColor: {r: 1, g: 1, b: 1, a: 1}
+  meleeTrailWidth: 0.15
+  meleeTrailTime: 0.3
+  meleeTrailStartWidthMultiplier: 1
+  meleeTrailEndWidthMultiplier: 1
+  meleeTrailEndColor: {r: 1, g: 1, b: 1, a: 1}
+  meleeTrailCornerVertices: 3
+  meleeTrailEndCapVertices: 3
   isRangedWeapon: 1
   projectileType: Arrow
   trailColorStart: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}

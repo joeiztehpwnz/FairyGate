@@ -27,7 +27,7 @@ namespace FairyGate.Combat
             // Validate this is actually a defensive skill
             if (!IsDefensiveSkill())
             {
-                Debug.LogError($"WaitingState created for non-defensive skill {type}!");
+                CombatLogger.LogSkill($"WaitingState created for non-defensive skill {type}!", CombatLogger.LogLevel.Error);
             }
         }
 
@@ -35,7 +35,7 @@ namespace FairyGate.Combat
         {
             base.OnEnter();
 
-            Debug.Log($"<color=cyan>[STATE PATTERN] {skillSystem.gameObject.name} entered WaitingState for {skillType}</color>");
+            CombatLogger.LogSkill($"<color=cyan>[STATE PATTERN] {skillSystem.gameObject.name} entered WaitingState for {skillType}</color>");
 
             // NOTE: CombatInteractionManager.ProcessSkillExecution() was already called in ActiveState
             // The SkillExecution is already in the waitingDefensiveSkills list
@@ -57,13 +57,13 @@ namespace FairyGate.Combat
             elapsedTime += deltaTime;
             if (Mathf.FloorToInt(elapsedTime) != Mathf.FloorToInt(elapsedTime - deltaTime))
             {
-                Debug.Log($"[WaitingState] {skillSystem.gameObject.name} stamina: {staminaAfter} (drained {staminaBefore - staminaAfter} this frame, rate: {drainRate}/s)");
+                CombatLogger.LogSkill($"[WaitingState] {skillSystem.gameObject.name} stamina: {staminaAfter} (drained {staminaBefore - staminaAfter} this frame, rate: {drainRate}/s)");
             }
 
             // CRITICAL FIX: Auto-cancel if stamina depleted (fixes memory leak bug #3)
             if (skillSystem.StaminaSystem.CurrentStamina <= 0)
             {
-                Debug.Log($"<color=red>[STATE PATTERN] {skillSystem.gameObject.name} {skillType} auto-cancelled due to stamina depletion</color>");
+                CombatLogger.LogSkill($"<color=red>[STATE PATTERN] {skillSystem.gameObject.name} {skillType} auto-cancelled due to stamina depletion</color>");
 
                 // Transition to Recovery (OnExit will clean up)
                 skillSystem.StateMachine.TransitionTo(new RecoveryState(skillSystem, skillType));
@@ -79,7 +79,12 @@ namespace FairyGate.Combat
         {
             base.OnExit();
 
-            Debug.Log($"<color=yellow>[STATE PATTERN] {skillSystem.gameObject.name} exiting WaitingState for {skillType} - CLEANUP STARTING</color>");
+            CombatLogger.LogSkill($"<color=yellow>[STATE PATTERN] {skillSystem.gameObject.name} exiting WaitingState for {skillType} - CLEANUP STARTING</color>");
+
+            // CRITICAL FIX: Reset movement modifier before exiting
+            // Waiting state applies 0% movement speed (frozen), must reset to 1f when exiting
+            // This prevents AI from being stuck slow after knockback interrupts defensive skills
+            skillSystem.MovementController.SetMovementModifier(1f);
 
             // CRITICAL FIX: Remove from CombatInteractionManager's waiting list
             // This fixes ALL memory leak bugs:
@@ -94,7 +99,7 @@ namespace FairyGate.Combat
                 CombatInteractionManager.Instance.RemoveWaitingDefensiveSkill(skillSystem);
             }
 
-            Debug.Log($"<color=green>[STATE PATTERN] {skillSystem.gameObject.name} WaitingState cleanup COMPLETE</color>");
+            CombatLogger.LogSkill($"<color=green>[STATE PATTERN] {skillSystem.gameObject.name} WaitingState cleanup COMPLETE</color>");
         }
 
         public override SkillExecutionState GetStateType()

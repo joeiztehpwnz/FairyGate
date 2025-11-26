@@ -59,7 +59,7 @@ namespace FairyGate.Combat
 
             if (characterStats == null)
             {
-                Debug.LogWarning($"StaminaSystem on {gameObject.name} has no CharacterStats assigned. Using default values.");
+                CombatLogger.LogCombat($"StaminaSystem on {gameObject.name} has no CharacterStats assigned. Using default values.", CombatLogger.LogLevel.Warning);
                 characterStats = CharacterStats.CreateDefaultStats();
             }
 
@@ -79,11 +79,21 @@ namespace FairyGate.Combat
         // Renamed from Update() to CombatUpdate() for centralized update management
         public void CombatUpdate(float deltaTime)
         {
-            // Classic Mabinogi: Passive stamina regeneration (0.4/s = 24/min)
-            // Always regenerates slowly, even during combat
             if (!isResting)
             {
-                RegenerateStamina(CombatConstants.PASSIVE_STAMINA_REGEN * deltaTime);
+                // Passive stamina regeneration (0.4/s = 24/min out of combat)
+                float regenRate = CombatConstants.PASSIVE_STAMINA_REGEN;
+
+                // Reduce/disable regen when in combat (punishing stamina management)
+                if (combatController != null && combatController.IsInCombat)
+                {
+                    regenRate *= CombatConstants.COMBAT_STAMINA_REGEN_MULTIPLIER;
+                }
+
+                if (regenRate > 0)
+                {
+                    RegenerateStamina(regenRate * deltaTime);
+                }
             }
             else
             {
@@ -102,11 +112,16 @@ namespace FairyGate.Combat
 
         public bool ConsumeStamina(int amount)
         {
+            Debug.Log($"[StaminaSystem] {gameObject.name} ConsumeStamina({amount}) - current={currentStamina}, max={MaxStamina}");
+
             if (currentStamina >= amount)
             {
                 currentStamina -= amount;
+                staminaAccumulator = currentStamina; // Keep accumulator in sync
                 currentStamina = Mathf.Max(0, currentStamina);
                 OnStaminaChanged?.Invoke(currentStamina, MaxStamina);
+
+                Debug.Log($"[StaminaSystem] {gameObject.name} Stamina consumed: now {currentStamina}/{MaxStamina}");
 
                 if (currentStamina == 0)
                 {
@@ -115,6 +130,7 @@ namespace FairyGate.Combat
 
                 return true;
             }
+            Debug.Log($"[StaminaSystem] {gameObject.name} Insufficient stamina!");
             return false;
         }
 
@@ -145,7 +161,7 @@ namespace FairyGate.Combat
             // Debug logging (reduced frequency to avoid spam)
             if (drainRate > 0 && Time.frameCount % 60 == 0) // Log once per second at 60fps
             {
-                Debug.Log($"{gameObject.name} stamina drain: base={drainRate:F2}/s, modified={modifiedDrainRate:F2}/s, accumulator={staminaAccumulator:F2}, displayed={currentStamina}");
+                CombatLogger.LogStamina($"{gameObject.name} stamina drain: base={drainRate:F2}/s, modified={modifiedDrainRate:F2}/s, accumulator={staminaAccumulator:F2}, displayed={currentStamina}");
             }
 
             if (currentStamina != oldStamina)
@@ -186,7 +202,7 @@ namespace FairyGate.Combat
             if (isResting)
             {
                 StopResting();
-                Debug.Log($"{gameObject.name} rest interrupted by taking damage");
+                CombatLogger.LogCombat($"{gameObject.name} rest interrupted by taking damage");
             }
         }
 
@@ -236,7 +252,7 @@ namespace FairyGate.Combat
                         // Grace period expired, auto-cancel skill
                         skillSystem.CancelSkill();
                         OnSkillAutoCancel?.Invoke(currentSkill);
-                        Debug.Log($"{gameObject.name} auto-cancelled {currentSkill} due to stamina depletion");
+                        CombatLogger.LogCombat($"{gameObject.name} auto-cancelled {currentSkill} due to stamina depletion");
                     }
                 }
             }

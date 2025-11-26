@@ -25,6 +25,16 @@ namespace FairyGate.Combat
         [Tooltip("Does this skill require charging before execution?")]
         public bool requiresCharge = true;
 
+        [Header("Pattern Skill Control")]
+        [Tooltip("Start charging this skill when entering this node?")]
+        public bool startChargingSkill = false;
+
+        [Tooltip("Execute the charged skill when ready (pattern controls timing)?")]
+        public bool executeChargedSkill = false;
+
+        [Tooltip("Cancel any active skill when exiting this node?")]
+        public bool cancelSkillOnExit = false;
+
         [Header("Movement Behavior")]
         [Tooltip("How should the AI move while in this node?")]
         public MovementBehaviorType movementBehavior = MovementBehaviorType.MaintainCustomRange;
@@ -34,6 +44,9 @@ namespace FairyGate.Combat
 
         [Tooltip("How close to target range is acceptable (meters)")]
         public float rangeTolerance = 0.3f;
+
+        [Tooltip("Fixed distance to retreat in meters (used by RetreatFixedDistance behavior)")]
+        public float retreatDistance = 6.0f;
 
         [Tooltip("Movement speed multiplier while in this node (1.0 = normal)")]
         [Range(0f, 2f)]
@@ -49,6 +62,14 @@ namespace FairyGate.Combat
         [Header("Transitions")]
         [Tooltip("Possible transitions to other nodes (evaluated by priority)")]
         public List<PatternTransition> transitions = new List<PatternTransition>();
+
+        [Header("Ranged Attack Configuration")]
+        [Tooltip("Minimum accuracy percentage before firing ranged attack (0-100)")]
+        [Range(0f, 100f)]
+        public float rangedAccuracyThreshold = 60f;
+
+        [Tooltip("Maximum time to aim before firing anyway (seconds)")]
+        public float maxAimingTime = 3.0f;
 
         [Header("Telegraph (Optional)")]
         [Tooltip("Visual/audio warning before executing this skill")]
@@ -84,7 +105,7 @@ namespace FairyGate.Combat
         /// Gets the highest priority transition whose conditions are met.
         /// Returns null if no valid transitions exist.
         /// </summary>
-        public PatternTransition GetValidTransition(PatternEvaluationContext context)
+        public PatternTransition GetValidTransition(PatternEvaluationContext context, bool enableDebugLogs = false)
         {
             if (transitions == null || transitions.Count == 0)
                 return null;
@@ -96,7 +117,15 @@ namespace FairyGate.Combat
             // Return first transition whose conditions are met
             foreach (var transition in sortedTransitions)
             {
-                if (transition.EvaluateConditions(context))
+                bool conditionsMet = transition.EvaluateConditions(context);
+
+                if (enableDebugLogs && !conditionsMet && context.timeInCurrentNode > 1f)
+                {
+                    // Log why transitions fail after being in node for >1 second
+                    CombatLogger.LogPattern($"[PatternNode] '{nodeName}' transition to '{transition.targetNodeName}' conditions not met (time: {context.timeInCurrentNode:F3}s)");
+                }
+
+                if (conditionsMet)
                     return transition;
             }
 
@@ -207,6 +236,7 @@ namespace FairyGate.Combat
         CircleStrafeRight,       // Strafe clockwise around target
         HoldPosition,            // Stop all movement, maintain current position
         UseFormationSlot,        // Request and move to formation slot from AICoordinator
-        FollowAtDistance         // Follow target at safe distance (good for ranged characters)
+        FollowAtDistance,        // Follow target at safe distance (good for ranged characters)
+        RetreatFixedDistance     // Retreat exactly X meters from starting position and stop (uses retreatDistance field)
     }
 }

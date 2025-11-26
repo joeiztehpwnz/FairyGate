@@ -32,11 +32,11 @@ namespace FairyGate.Combat
         public const float KNOCKDOWN_DURATION = 2.0f;
 
         // Knockback Distances
-        public const float COUNTER_KNOCKBACK_DISTANCE = 1.5f;
-        public const float SMASH_KNOCKBACK_DISTANCE = 2.0f;
-        public const float WINDMILL_KNOCKBACK_DISTANCE = 1.8f;
-        public const float KNOCKBACK_DISPLACEMENT_DISTANCE = 0.8f;
-        public const float METER_KNOCKBACK_DISTANCE = 1.2f;
+        public const float COUNTER_KNOCKBACK_DISTANCE = 3.0f;
+        public const float SMASH_KNOCKBACK_DISTANCE = 3.0f;
+        public const float WINDMILL_KNOCKBACK_DISTANCE = 3.0f;
+        public const float KNOCKBACK_DISPLACEMENT_DISTANCE = 1.5f;
+        public const float METER_KNOCKBACK_DISTANCE = 3.0f;
 
         // Windmill AoE
         public const float WINDMILL_RADIUS = 2.5f;  // AoE radius for Windmill skill
@@ -61,13 +61,13 @@ namespace FairyGate.Combat
         public const float STRENGTH_KNOCKDOWN_DIVISOR = 10f;
         public const float PHYSICAL_DEFENSE_REDUCTION_DIVISOR = 20f;
 
-        // Classic Mabinogi: Stamina Costs (Adjusted to Pre-2012 Values)
-        public const int ATTACK_STAMINA_COST = 2;
-        public const int SMASH_STAMINA_COST = 5;        // Increased from 4
-        public const int WINDMILL_STAMINA_COST = 4;     // Increased from 3
-        public const int DEFENSE_STAMINA_COST = 2;      // Reduced from 3 (initial cost)
-        public const int COUNTER_STAMINA_COST = 3;      // Reduced from 5 (initial cost)
-        public const int LUNGE_STAMINA_COST = 4;
+        // Stamina Costs (Punishing - Doubled from Original Values)
+        public const int ATTACK_STAMINA_COST = 4;       // was 2
+        public const int SMASH_STAMINA_COST = 10;       // was 5
+        public const int WINDMILL_STAMINA_COST = 8;     // was 4
+        public const int DEFENSE_STAMINA_COST = 4;      // was 2
+        public const int COUNTER_STAMINA_COST = 6;      // was 3
+        public const int LUNGE_STAMINA_COST = 8;        // was 4
 
         // Defense Block System
         public const float DEFENSE_BLOCK_RECOVERY_TIME = 0.5f;
@@ -81,27 +81,35 @@ namespace FairyGate.Combat
         public const float LUNGE_ACTIVE_TIME = 0.15f;   // Fast dash (vulnerable but quick)
         public const float LUNGE_RECOVERY_TIME = 0.2f;
 
-        // Classic Mabinogi: Stamina Drain Rates (Per Second, Reduced from Modern Values)
-        public const float DEFENSE_STAMINA_DRAIN = 1.0f;   // Reduced from 3.0f
-        public const float COUNTER_STAMINA_DRAIN = 1.0f;   // Reduced from 5.0f
+        // Stamina Drain Rates (Per Second - Punishing Values)
+        public const float DEFENSE_STAMINA_DRAIN = 5.0f;   // was 1.0f (5x higher)
+        public const float COUNTER_STAMINA_DRAIN = 5.0f;   // was 1.0f (5x higher)
 
-        // Classic Mabinogi: Stamina Regeneration System
+        // Charging Stamina Drain Rates (Per Second)
+        public const float ATTACK_CHARGING_DRAIN = 2.0f;
+        public const float SMASH_CHARGING_DRAIN = 4.0f;
+        public const float COUNTER_CHARGING_DRAIN = 2.0f;
+        public const float WINDMILL_CHARGING_DRAIN = 3.0f;
+        public const float RANGED_AIMING_DRAIN = 1.5f;
+
+        // Stamina Regeneration System
         public const float PASSIVE_STAMINA_REGEN = 0.4f;           // Per second while standing (24/min)
         public const float REST_STAMINA_REGENERATION_RATE = 25f;   // Per second during active rest
+        public const float COMBAT_STAMINA_REGEN_MULTIPLIER = 0.0f; // No regen while in combat (0 = disabled)
 
         // Auto-Cancel Grace Period
         public const float AUTO_CANCEL_GRACE_PERIOD = 0.1f;
 
         // Classic Mabinogi: Movement Speed Modifiers During Charging
         public const float OFFENSIVE_CHARGE_MOVE_SPEED = 0.5f;      // 50% speed while charging offensive skills (Smash, Lunge)
-        public const float DEFENSIVE_CHARGE_MOVE_SPEED = 0.0f;      // Rooted in place for Defense/Counter
+        public const float DEFENSIVE_CHARGE_MOVE_SPEED = 0.3f;      // 30% movement speed for Defense/Counter during charged states
         public const float WINDMILL_CHARGE_MOVE_SPEED = 1.0f;       // No penalty (Windmill keeps mobile)
         public const float DEFENSE_MOVEMENT_SPEED_MODIFIER = 0.0f;  // Rooted in place (changed from 0.7f)
         public const float COUNTER_MOVEMENT_SPEED_MODIFIER = 0.0f;  // Rooted in place (changed from 0.7f)
         public const float WINDMILL_MOVEMENT_SPEED_MODIFIER = 1.0f; // No penalty (changed from 0.7f)
 
         // RangedAttack Skill Constants
-        public const int RANGED_ATTACK_STAMINA_COST = 3;
+        public const int RANGED_ATTACK_STAMINA_COST = 6;  // was 3
         public const float RANGED_ATTACK_BASE_RANGE = 6.0f;    // Default if weapon doesn't override
         public const int RANGED_ATTACK_BASE_DAMAGE = 10;       // Default if weapon doesn't override
 
@@ -130,5 +138,30 @@ namespace FairyGate.Combat
         public const int FORMATION_SLOT_COUNT = 8;            // Number of circular positions around player
         public const float FORMATION_SLOT_OFFSET = 0.3f;       // Random offset per enemy for variation
         public const float FORMATION_SLOT_REASSIGN_COOLDOWN = 2.0f; // Prevent slot thrashing
+
+        // N+1 Combo System
+        public const float CRITICAL_STUN_MULTIPLIER = 1.3f;   // Critical hits extend stun by 30%
+        public const float N_PLUS_ONE_WINDOW_START = 0.7f;    // N+1 window opens at 70% of stun duration
+        public const float N_PLUS_ONE_WINDOW_END = 0.95f;     // N+1 window closes at 95% of stun duration
+
+        // N+2 System (Advanced - for fast weapons)
+        public const float N_PLUS_TWO_FIRST_WINDOW = 0.5f;    // First window at 50% of stun
+        public const float N_PLUS_TWO_SECOND_WINDOW = 0.9f;   // Second window at 90% of stun
+        public const float N_PLUS_TWO_TOLERANCE = 0.02f;      // ±2% timing tolerance for N+2
+
+        // AI Pattern Behavior
+        public const int DEFENSIVE_INTERRUPT_PRIORITY_THRESHOLD = 15; // Priority >= 15 can interrupt skill execution
+        public const float AI_PLAYER_SEARCH_COOLDOWN = 1.0f;          // Seconds between player searches
+
+        // Combat Interaction Timing
+        public const float DEFENSIVE_SKILL_TIMEOUT_SECONDS = 5.0f;    // Max time defensive skills wait for targets
+
+        // Telegraph System Durations
+        public const float TELEGRAPH_STANCE_DURATION = 0.5f;
+        public const float TELEGRAPH_WEAPON_RAISE_DURATION = 0.8f;
+        public const float TELEGRAPH_SHIELD_RAISE_DURATION = 0.6f;
+        public const float TELEGRAPH_GROUND_INDICATOR_DURATION = 1.0f;
+        public const float TELEGRAPH_CROUCH_DURATION = 0.4f;
+        public const float TELEGRAPH_BACKSTEP_DURATION = 0.3f;
     }
 }
